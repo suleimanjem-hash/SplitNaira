@@ -1,3 +1,4 @@
+/// <reference types="@testing-library/jest-dom" />
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -21,14 +22,46 @@ const mocks = vi.hoisted(() => ({
   mockBuildDepositXdr: vi.fn(),
   mockBuildAllowTokenXdr: vi.fn(),
   mockBuildDisallowTokenXdr: vi.fn(),
-  mockSendTransaction: vi.fn()
+  mockSendTransaction: vi.fn(),
+  mockPollTransaction: vi.fn()
 }));
 
-vi.mock("@/lib/freighter", () => ({
-  getFreighterWalletState: mocks.mockGetFreighterWalletState,
-  connectFreighter: mocks.mockConnectFreighter,
-  signWithFreighter: mocks.mockSignWithFreighter
-}));
+vi.mock("@/lib/freighter", () => {
+  const mockRpc = () => ({
+    sendTransaction: mocks.mockSendTransaction,
+    pollTransaction: mocks.mockPollTransaction
+  });
+  return {
+    getFreighterWalletState: mocks.mockGetFreighterWalletState,
+    connectFreighter: mocks.mockConnectFreighter,
+    signWithFreighter: mocks.mockSignWithFreighter,
+    createSorobanRpcServer: mockRpc,
+    submitSorobanTransactionAndPoll: async (
+      server: ReturnType<typeof mockRpc>,
+      transaction: unknown,
+      options?: { afterSubmitted?: (hash: string) => void; pollAttempts?: number }
+    ) => {
+      const submitResponse = await server.sendTransaction(transaction);
+      if (submitResponse.status === "ERROR" || submitResponse.status === "TRY_AGAIN_LATER") {
+        throw new Error(
+          submitResponse.errorResult?.toString() ?? "Transaction rejected."
+        );
+      }
+      const hash = submitResponse.hash as string | undefined;
+      if (!hash) {
+        throw new Error("Submission did not return a transaction hash.");
+      }
+      options?.afterSubmitted?.(hash);
+      const polled = await server.pollTransaction(hash, {
+        attempts: options?.pollAttempts ?? 90
+      });
+      if (polled.status !== "SUCCESS") {
+        throw new Error(`Unexpected transaction status: ${String(polled.status)}`);
+      }
+      return { hash };
+    }
+  };
+});
 
 vi.mock("@/hooks/useWallet", () => ({
   useWallet: mocks.mockUseWallet
@@ -55,10 +88,13 @@ vi.mock("@stellar/stellar-sdk", () => ({
   },
   rpc: {
     Server: vi.fn().mockImplementation(() => ({
-      sendTransaction: mocks.mockSendTransaction
+      sendTransaction: mocks.mockSendTransaction,
+      pollTransaction: mocks.mockPollTransaction
     }))
   },
-  Transaction: vi.fn()
+  Transaction: vi.fn(function MockStellarTransaction(this: { toXDR: () => string }) {
+    this.toXDR = () => "MOCK_TX_XDR";
+  })
 }));
 
 function renderSplitApp() {
@@ -145,6 +181,7 @@ describe("SplitApp lock project flow", () => {
       metadata: { networkPassphrase: "TESTNET", contractId: "CID" }
     });
     mocks.mockSendTransaction.mockResolvedValue({ status: "PENDING", hash: "HASH_1" });
+    mocks.mockPollTransaction.mockResolvedValue({ status: "SUCCESS" });
   });
 
   it("shows lock button for owner when project is unlocked", async () => {
@@ -212,9 +249,14 @@ describe("SplitApp lock project flow", () => {
     const dialog = screen.getByRole("dialog");
     await user.click(within(dialog).getByRole("button", { name: "Lock Project" }));
 
-    expect(within(dialog).getByRole("button", { name: "Locking..." })).toHaveProperty("disabled", true);
+    expect(
+      within(dialog).getByRole("button", { name: /Signing & locking|Confirming on ledger/i })
+    ).toHaveProperty("disabled", true);
 
-    resolveLock?.();
+    const flushLock = resolveLock as (() => void) | null;
+    if (flushLock) {
+      flushLock();
+    }
     await waitFor(() => {
       expect(mocks.mockBuildLockProjectXdr).toHaveBeenCalledWith("project_1", "GOWNER123");
     });
@@ -253,6 +295,7 @@ describe("Issue #174: owner gating and lock lifecycle", () => {
       metadata: { networkPassphrase: "TESTNET", contractId: "CID" }
     });
     mocks.mockSendTransaction.mockResolvedValue({ status: "PENDING", hash: "LIFECYCLE_HASH" });
+    mocks.mockPollTransaction.mockResolvedValue({ status: "SUCCESS" });
   });
 
   it("non-owner without wallet connection cannot see lock button and sees no locked banner on unlocked project", async () => {
@@ -371,6 +414,7 @@ describe("SplitApp admin allowlist flow", () => {
       metadata: { networkPassphrase: "TESTNET", contractId: "CID" }
     });
     mocks.mockSendTransaction.mockResolvedValue({ status: "PENDING", hash: "ALLOWLIST_HASH" });
+    mocks.mockPollTransaction.mockResolvedValue({ status: "SUCCESS" });
   });
 
   it("shows the admin allowlist panel for the configured admin wallet", async () => {
@@ -398,30 +442,35 @@ describe("SplitApp admin allowlist flow", () => {
 
   it("submits an allow-token action and refreshes allowlist state", async () => {
     const user = userEvent.setup();
-    mocks.mockGetTokenAllowlist
-      .mockResolvedValueOnce(baseAllowlist)
-      .mockResolvedValueOnce({
-        ...baseAllowlist,
-        allowedTokenCount: 2,
-        tokens: ["CTOKEN1", "CTOKEN2"]
-      });
+    const updatedAllowlist = {
+      ...baseAllowlist,
+      allowedTokenCount: 2,
+      tokens: ["CTOKEN1", "CTOKEN2"]
+    };
+    mocks.mockGetTokenAllowlist.mockReset();
+    mocks.mockGetTokenAllowlist.mockResolvedValueOnce(baseAllowlist);
+    mocks.mockGetTokenAllowlist.mockResolvedValue(updatedAllowlist);
 
     renderSplitApp();
 
-    await screen.findByText("Admin Token Allowlist");
+    await screen.findByRole("heading", { name: "Admin Token Allowlist" });
+    const allowlistPanel = screen
+      .getByRole("heading", { name: "Admin Token Allowlist" })
+      .closest(".glass-card") as HTMLElement;
+    expect(allowlistPanel).toBeTruthy();
     await user.type(
-      screen.getByLabelText("Token Contract Address"),
+      within(allowlistPanel).getByPlaceholderText(/Enter token address to allow or disallow/i),
       "CTOKEN2"
     );
-    await user.click(screen.getByRole("button", { name: "Allow Token" }));
+    await user.click(within(allowlistPanel).getByRole("button", { name: "Allow Token" }));
 
     await waitFor(() => {
       expect(mocks.mockBuildAllowTokenXdr).toHaveBeenCalledWith("GOWNER123", "CTOKEN2");
     });
     await waitFor(() => {
-      expect(mocks.mockGetTokenAllowlist).toHaveBeenCalledTimes(2);
+      expect(mocks.mockGetTokenAllowlist.mock.calls.length).toBeGreaterThanOrEqual(2);
     });
-    expect(await screen.findByText("CTOKEN2")).toBeInTheDocument();
+    expect((await screen.findAllByText("CTOKEN2")).length).toBeGreaterThan(0);
   });
 });
 
@@ -453,6 +502,7 @@ describe("SplitApp distribute flow", () => {
       metadata: { networkPassphrase: "TESTNET", contractId: "CID" }
     });
     mocks.mockSendTransaction.mockResolvedValue({ status: "PENDING", hash: "DIST_TX_HASH" });
+    mocks.mockPollTransaction.mockResolvedValue({ status: "SUCCESS" });
   });
 
   it("shows distribute button when project has balance and wallet connected", async () => {

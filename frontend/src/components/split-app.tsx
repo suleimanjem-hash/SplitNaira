@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
-import { rpc, Transaction, StrKey } from "@stellar/stellar-sdk";
+import { Transaction, StrKey } from "@stellar/stellar-sdk";
 import { clsx } from "clsx";
 
 import {
@@ -27,7 +27,9 @@ import {
 } from "@/lib/api";
 import { isOwner } from "@/lib/address";
 import {
+  createSorobanRpcServer,
   signWithFreighter,
+  submitSorobanTransactionAndPoll,
 } from "@/lib/freighter";
 import { type SplitProject, getExplorerUrl, getExplorerLabel } from "@/lib/stellar";
 import { useWallet } from "@/hooks/useWallet";
@@ -94,6 +96,7 @@ export function SplitApp() {
 
   // Phase 3: Projects tab state
   const [projectsList, setProjectsList] = useState<SplitProject[]>([]);
+  const [projectsListLoaded, setProjectsListLoaded] = useState(false);
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
   const [isLoadingProjectsList, setIsLoadingProjectsList] = useState(false);
   const [projectsStart, setProjectsStart] = useState(0);
@@ -170,10 +173,7 @@ export function SplitApp() {
         buildResponse.metadata.networkPassphrase
       );
 
-      const server = new rpc.Server(
-        process.env.NEXT_PUBLIC_SOROBAN_RPC_URL ?? "https://soroban-testnet.stellar.org",
-        { allowHttp: true }
-      );
+      const server = createSorobanRpcServer();
       const transaction = new Transaction(
         signedTxXdr,
         buildResponse.metadata.networkPassphrase
@@ -199,6 +199,8 @@ export function SplitApp() {
   const [dashboardData, setDashboardData] = useState<SplitProject[]>([]);
   const [userEarnings, setUserEarnings] = useState<Record<string, string>>({});
   const [isLoadingDashboard, setIsLoadingDashboard] = useState(false);
+  /** Prevents auto-fetch effect from looping when the API returns an empty project list. */
+  const [dashboardListLoaded, setDashboardListLoaded] = useState(false);
   const [tokenAllowlist, setTokenAllowlist] = useState<TokenAllowlistState | null>(null);
   const [allowlistTokenInput, setAllowlistTokenInput] = useState("");
   const [isLoadingAllowlist, setIsLoadingAllowlist] = useState(true);
@@ -445,10 +447,7 @@ export function SplitApp() {
         buildResponse.metadata.networkPassphrase
       );
 
-      const server = new rpc.Server(
-        process.env.NEXT_PUBLIC_SOROBAN_RPC_URL ?? "https://soroban-testnet.stellar.org",
-        { allowHttp: true }
-      );
+      const server = createSorobanRpcServer();
       const transaction = new Transaction(signedTxXdr, buildResponse.metadata.networkPassphrase);
       const submitResponse = await server.sendTransaction(transaction);
 
@@ -490,10 +489,7 @@ export function SplitApp() {
         buildResponse.metadata.networkPassphrase
       );
 
-      const server = new rpc.Server(
-        process.env.NEXT_PUBLIC_SOROBAN_RPC_URL ?? "https://soroban-testnet.stellar.org",
-        { allowHttp: true }
-      );
+      const server = createSorobanRpcServer();
       const transaction = new Transaction(
         signedTxXdr,
         buildResponse.metadata.networkPassphrase
@@ -614,38 +610,33 @@ export function SplitApp() {
         buildResponse.xdr,
         buildResponse.metadata.networkPassphrase,
       );
-      const server = new rpc.Server(
-        process.env.NEXT_PUBLIC_SOROBAN_RPC_URL ??
-          "https://soroban-testnet.stellar.org",
-        { allowHttp: true },
-      );
+      const server = createSorobanRpcServer();
       const transaction = new Transaction(
         signedTxXdr,
         buildResponse.metadata.networkPassphrase,
       );
-      const submitResponse = await server.sendTransaction(transaction);
-      if (submitResponse.status === "ERROR") {
-        throw new Error(
-          submitResponse.errorResult?.toString() ??
-            "Transaction submission failed.",
-        );
-      }
-      setTxHash(submitResponse.hash ?? null);
-      if (submitResponse.hash) {
-        setReceipt({
-          hash: submitResponse.hash,
-          action: "create",
-          projectId: projectId.trim(),
-          title: title.trim(),
-        });
-      }
+      await submitSorobanTransactionAndPoll(server, transaction, {
+        afterSubmitted: (hash) => {
+          setTxHash(hash);
+          setReceipt({
+            hash,
+            lifecycle: "confirming",
+            action: "create",
+            projectId: projectId.trim(),
+            title: title.trim(),
+          });
+        },
+      });
+      setReceipt((prev) =>
+        prev?.action === "create" && prev.hash
+          ? { ...prev, lifecycle: "success" }
+          : prev
+      );
       notify.success("Split project created successfully.");
 
-      // Fetch and store the created project details
       try {
         const projectDetails = await getSplit(projectId.trim());
         setCreatedProject(projectDetails);
-        // Advance to success step
         setCreateStep(4);
       } catch (error) {
         console.error("Failed to fetch created project details:", error);
@@ -656,6 +647,11 @@ export function SplitApp() {
         error instanceof Error
           ? error.message
           : "Failed to create split project.";
+      setReceipt((prev) =>
+        prev?.lifecycle === "confirming" && prev.action === "create"
+          ? { ...prev, lifecycle: "failed", failureReason: message }
+          : prev
+      );
       notify.error(message);
     } finally {
       setIsSubmitting(false);
@@ -721,36 +717,38 @@ export function SplitApp() {
         xdr,
         metadata.networkPassphrase,
       );
-      const server = new rpc.Server(
-        process.env.NEXT_PUBLIC_SOROBAN_RPC_URL ??
-          "https://soroban-testnet.stellar.org",
-        { allowHttp: true },
-      );
+      const server = createSorobanRpcServer();
       const transaction = new Transaction(
         signedTxXdr,
         metadata.networkPassphrase,
       );
-      const submitResponse = await server.sendTransaction(transaction);
-      if (submitResponse.status === "ERROR") {
-        throw new Error(
-          submitResponse.errorResult?.toString() ??
-            "Transaction distribution failed.",
-        );
-      }
-      setTxHash(submitResponse.hash ?? null);
-      if (submitResponse.hash) {
-        setReceipt({
-          hash: submitResponse.hash,
-          action: "distribute",
-          projectId: fetchedProject.projectId,
-          round: fetchedProject.distributionRound + 1,
-        });
-      }
-      notify.success("Distribution initiated successfully.");
+      await submitSorobanTransactionAndPoll(server, transaction, {
+        afterSubmitted: (hash) => {
+          setTxHash(hash);
+          setReceipt({
+            hash,
+            lifecycle: "confirming",
+            action: "distribute",
+            projectId: fetchedProject.projectId,
+            round: fetchedProject.distributionRound + 1,
+          });
+        },
+      });
+      setReceipt((prev) =>
+        prev?.action === "distribute" && prev.hash
+          ? { ...prev, lifecycle: "success" }
+          : prev
+      );
+      notify.success("Distribution completed successfully.");
       await onFetchProject();
     } catch (error) {
       const message =
         error instanceof Error ? error.message : "Distribution failed.";
+      setReceipt((prev) =>
+        prev?.lifecycle === "confirming" && prev.action === "distribute"
+          ? { ...prev, lifecycle: "failed", failureReason: message }
+          : prev
+      );
       notify.error(message);
     } finally {
       setIsSubmitting(false);
@@ -764,6 +762,9 @@ export function SplitApp() {
 
     return isOwner(fetchedProject.owner, wallet.address);
   }, [fetchedProject, wallet.address]);
+
+  /** Blocks parallel create / deposit / distribute / lock while any one is settling on Soroban. */
+  const sorobanSplitFlowBusy = isSubmitting || isLocking || isDepositing;
 
   const canLockProject = Boolean(fetchedProject && !fetchedProject.locked && isProjectOwner);
 
@@ -828,29 +829,34 @@ export function SplitApp() {
     try {
       const { xdr, metadata } = await buildLockProjectXdr(fetchedProject.projectId, wallet.address);
       const signedTxXdr = await signWithFreighter(xdr, metadata.networkPassphrase);
-      const server = new rpc.Server(
-        process.env.NEXT_PUBLIC_SOROBAN_RPC_URL ?? "https://soroban-testnet.stellar.org",
-        { allowHttp: true }
-      );
+      const server = createSorobanRpcServer();
       const transaction = new Transaction(signedTxXdr, metadata.networkPassphrase);
-      const submitResponse = await server.sendTransaction(transaction);
-      if (submitResponse.status === "ERROR") {
-        throw new Error(submitResponse.errorResult?.toString() ?? "Project lock transaction failed.");
-      }
-
-      setTxHash(submitResponse.hash ?? null);
-      if (submitResponse.hash) {
-        setReceipt({
-          hash: submitResponse.hash,
-          action: "lock",
-          projectId: fetchedProject.projectId,
-        });
-      }
+      await submitSorobanTransactionAndPoll(server, transaction, {
+        afterSubmitted: (hash) => {
+          setTxHash(hash);
+          setReceipt({
+            hash,
+            lifecycle: "confirming",
+            action: "lock",
+            projectId: fetchedProject.projectId,
+          });
+        },
+      });
+      setReceipt((prev) =>
+        prev?.action === "lock" && prev.hash
+          ? { ...prev, lifecycle: "success" }
+          : prev
+      );
       setFetchedProject((prev) => (prev ? { ...prev, locked: true } : prev));
       setShowLockModal(false);
       notify.success("Project locked permanently.");
     } catch (error) {
       const message = error instanceof Error ? error.message : "Failed to lock project.";
+      setReceipt((prev) =>
+        prev?.lifecycle === "confirming" && prev.action === "lock"
+          ? { ...prev, lifecycle: "failed", failureReason: message }
+          : prev
+      );
       notify.error(message);
     } finally {
       setIsLocking(false);
@@ -928,32 +934,36 @@ export function SplitApp() {
         amountInStroops
       );
       const signedTxXdr = await signWithFreighter(xdr, metadata.networkPassphrase);
-      const server = new rpc.Server(
-        process.env.NEXT_PUBLIC_SOROBAN_RPC_URL ?? "https://soroban-testnet.stellar.org",
-        { allowHttp: true }
-      );
+      const server = createSorobanRpcServer();
       const transaction = new Transaction(signedTxXdr, metadata.networkPassphrase);
-      const submitResponse = await server.sendTransaction(transaction);
-      if (submitResponse.status === "ERROR") {
-        throw new Error(submitResponse.errorResult?.toString() ?? "Deposit transaction failed.");
-      }
-
-      setTxHash(submitResponse.hash ?? null);
-      if (submitResponse.hash) {
-        setReceipt({
-          hash: submitResponse.hash,
-          action: "deposit",
-          projectId: fetchedProject.projectId,
-          amount: depositAmount,
-        });
-      }
+      await submitSorobanTransactionAndPoll(server, transaction, {
+        afterSubmitted: (hash) => {
+          setTxHash(hash);
+          setReceipt({
+            hash,
+            lifecycle: "confirming",
+            action: "deposit",
+            projectId: fetchedProject.projectId,
+            amount: depositAmount,
+          });
+        },
+      });
+      setReceipt((prev) =>
+        prev?.action === "deposit" && prev.hash
+          ? { ...prev, lifecycle: "success" }
+          : prev
+      );
       setShowDepositModal(false);
       setDepositAmount("");
       notify.success("Deposit successful!");
-      // Refresh project details to show updated balance
       await onFetchProject();
     } catch (error) {
       const message = error instanceof Error ? error.message : "Deposit failed.";
+      setReceipt((prev) =>
+        prev?.lifecycle === "confirming" && prev.action === "deposit"
+          ? { ...prev, lifecycle: "failed", failureReason: message }
+          : prev
+      );
       notify.error(message);
     } finally {
       setIsDepositing(false);
@@ -1010,11 +1020,12 @@ export function SplitApp() {
       setIsProjectsListStale(projectsList.length > 0);
     } finally {
       setIsLoadingProjectsList(false);
+      setProjectsListLoaded(true);
     }
   }, [isLoadingProjectsList, projectsList.length, projectsStart, listProjects]);
   }, [projectsList.length]);
 
-  const onFetchDashboardData = async () => {
+  const onFetchDashboardData = useCallback(async () => {
     setIsLoadingDashboard(true);
     try {
       const projects = await getAllSplits();
@@ -1022,7 +1033,6 @@ export function SplitApp() {
 
       if (wallet.connected && wallet.address) {
         const earnings: Record<string, string> = {};
-        // Fetch user earnings for each project non-blocking
         await Promise.all(
           projects
             .filter(p => p.collaborators.some(c => c.address === wallet.address) || p.owner === wallet.address)
@@ -1042,8 +1052,9 @@ export function SplitApp() {
       notify.error(message);
     } finally {
       setIsLoadingDashboard(false);
+      setDashboardListLoaded(true);
     }
-  };
+  }, [wallet.connected, wallet.address]);
 
   const refreshTokenAllowlist = async () => {
     setIsLoadingAllowlist(true);
@@ -1083,10 +1094,7 @@ export function SplitApp() {
         buildResponse.xdr,
         buildResponse.metadata.networkPassphrase
       );
-      const server = new rpc.Server(
-        process.env.NEXT_PUBLIC_SOROBAN_RPC_URL ?? "https://soroban-testnet.stellar.org",
-        { allowHttp: true }
-      );
+      const server = createSorobanRpcServer();
       const transaction = new Transaction(
         signedTxXdr,
         buildResponse.metadata.networkPassphrase
@@ -1120,23 +1128,26 @@ export function SplitApp() {
     }
   };
 
-  // Load projects list when switching to Projects tab
+  // Load projects list when switching to Projects tab (once per visit; empty list is valid)
   useEffect(() => {
     if (activeTab === "projects") {
       if (projectsList.length === 0 && !isLoadingProjectsList) {
         void onFetchProjectsList();
       }
     } else if (activeTab === "dashboard" && dashboardData.length === 0 && !isLoadingDashboard) {
+    if (activeTab === "projects" && !projectsListLoaded && !isLoadingProjectsList) {
+      void onFetchProjectsList();
+    } else if (activeTab === "dashboard" && !dashboardListLoaded && !isLoadingDashboard) {
       void onFetchDashboardData();
     }
   }, [
     activeTab,
-    dashboardData.length,
+    dashboardListLoaded,
     isLoadingDashboard,
     isLoadingProjectsList,
     onFetchDashboardData,
     onFetchProjectsList,
-    projectsList.length
+    projectsListLoaded
   ]);
 
   return (
@@ -1253,23 +1264,33 @@ export function SplitApp() {
           <div className="space-y-10 animate-in fade-in duration-700">
             {/* Summary Cards */}
             <div className="grid gap-6 md:grid-cols-3">
-              <div className="glass-card rounded-3xl p-8 border-l-4 border-greenBright">
-                <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-muted mb-2">Total Managed</p>
-                <p className="text-3xl font-display">{dashboardData.length} <span className="text-sm font-sans text-muted">Projects</span></p>
-              </div>
-              <div className="glass-card rounded-3xl p-8 border-l-4 border-goldLight">
-                <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-muted mb-2">Platform Treasury</p>
-                <p className="text-3xl font-display text-greenBright">
-                  {dashboardData.reduce((sum, p) => sum + Number(p.balance), 0).toLocaleString()}
-                  <span className="text-sm font-sans text-muted ml-2">Stroops</span>
-                </p>
-              </div>
-              <div className="glass-card rounded-3xl p-8 border-l-4 border-white/20">
-                <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-muted mb-2">Lifetime Payouts</p>
-                <p className="text-3xl font-display">
-                  {dashboardData.reduce((sum, p) => sum + Number(p.totalDistributed), 0).toLocaleString()}
-                </p>
-              </div>
+              {isLoadingDashboard ? (
+                <>
+                  <SummaryCardSkeleton />
+                  <SummaryCardSkeleton />
+                  <SummaryCardSkeleton />
+                </>
+              ) : (
+                <>
+                  <div className="glass-card rounded-3xl p-8 border-l-4 border-greenBright">
+                    <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-muted mb-2">Total Managed</p>
+                    <p className="text-3xl font-display">{dashboardData.length} <span className="text-sm font-sans text-muted">Projects</span></p>
+                  </div>
+                  <div className="glass-card rounded-3xl p-8 border-l-4 border-goldLight">
+                    <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-muted mb-2">Platform Treasury</p>
+                    <p className="text-3xl font-display text-greenBright">
+                      {dashboardData.reduce((sum, p) => sum + Number(p.balance), 0).toLocaleString()}
+                      <span className="text-sm font-sans text-muted ml-2">Stroops</span>
+                    </p>
+                  </div>
+                  <div className="glass-card rounded-3xl p-8 border-l-4 border-white/20">
+                    <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-muted mb-2">Lifetime Payouts</p>
+                    <p className="text-3xl font-display">
+                      {dashboardData.reduce((sum, p) => sum + Number(p.totalDistributed), 0).toLocaleString()}
+                    </p>
+                  </div>
+                </>
+              )}
             </div>
 
             {wallet.connected && isContractAdmin && tokenAllowlist && (
@@ -1922,7 +1943,7 @@ export function SplitApp() {
             <div className="mt-12 pt-12 border-t border-white/5">
               <button
                 type="submit"
-                disabled={isSubmitting || !isValid}
+                disabled={!isValid || sorobanSplitFlowBusy}
                 className="premium-button w-full rounded-4xl bg-greenMid py-5 text-sm font-extrabold uppercase tracking-[0.25em] text-white shadow-2xl shadow-greenMid/20 disabled:cursor-not-allowed disabled:opacity-20"
               >
                 {isSubmitting ? (
@@ -1943,7 +1964,9 @@ export function SplitApp() {
                         d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
                       />
                     </svg>
-                    Initialising Contract...
+                    {receipt?.lifecycle === "confirming" && receipt.action === "create"
+                      ? "Confirming on ledger…"
+                      : "Sign in wallet & submit…"}
                   </div>
                 ) : (
                   "Create Split Project"
@@ -2161,7 +2184,8 @@ export function SplitApp() {
                         <button
                           type="button"
                           onClick={() => setShowLockModal(true)}
-                          className="premium-button rounded-2xl border border-red-400/30 bg-red-500/10 px-6 py-3 text-[10px] font-bold uppercase tracking-widest text-red-300 transition hover:bg-red-500/20"
+                          disabled={sorobanSplitFlowBusy}
+                          className="premium-button rounded-2xl border border-red-400/30 bg-red-500/10 px-6 py-3 text-[10px] font-bold uppercase tracking-widest text-red-300 transition hover:bg-red-500/20 disabled:cursor-not-allowed disabled:opacity-40"
                         >
                           Lock Project
                         </button>
@@ -2489,7 +2513,7 @@ export function SplitApp() {
 
                     <button
                       onClick={() => setShowDepositModal(true)}
-                      disabled={!wallet.connected}
+                      disabled={!wallet.connected || sorobanSplitFlowBusy}
                       className="premium-button w-full rounded-2xl bg-goldLight py-6 text-xs font-black uppercase tracking-[0.3em] text-[#0a0a09] shadow-xl shadow-goldLight/20 disabled:opacity-10 disabled:bg-white"
                     >
                       Deposit Funds
@@ -2503,7 +2527,9 @@ export function SplitApp() {
                     <button
                       onClick={() => setShowDistributeModal(true)}
                       disabled={
-                        Number(fetchedProject.balance) <= 0 || !wallet.connected
+                        Number(fetchedProject.balance) <= 0 ||
+                        !wallet.connected ||
+                        sorobanSplitFlowBusy
                       }
                       className="premium-button w-full rounded-2xl bg-greenBright py-6 text-xs font-black uppercase tracking-[0.3em] text-[#0a0a09] shadow-xl shadow-greenBright/10 disabled:opacity-10 disabled:bg-white"
                     >
@@ -2770,7 +2796,11 @@ export function SplitApp() {
 
                       <button
                         onClick={() => setShowDistributeModal(true)}
-                        disabled={Number(fetchedProject.balance) <= 0 || !wallet.connected}
+                        disabled={
+                          Number(fetchedProject.balance) <= 0 ||
+                          !wallet.connected ||
+                          sorobanSplitFlowBusy
+                        }
                         className="premium-button w-full rounded-2xl bg-greenBright py-6 text-xs font-black uppercase tracking-[0.3em] text-[#0a0a09] shadow-xl shadow-greenBright/10 disabled:opacity-10 disabled:bg-white"
                       >
                         Trigger Distribution
@@ -2886,14 +2916,18 @@ export function SplitApp() {
             <div className="mt-10 flex flex-col gap-4">
               <button
                 onClick={onDistribute}
-                disabled={isSubmitting}
+                disabled={sorobanSplitFlowBusy}
                 className="premium-button w-full rounded-2xl bg-greenBright py-5 text-xs font-black uppercase tracking-[0.3em] text-[#0a0a09]"
               >
-                {isSubmitting ? "Broadcasting..." : "Execute Payout"}
+                {isSubmitting
+                  ? receipt?.lifecycle === "confirming" && receipt.action === "distribute"
+                    ? "Confirming on ledger…"
+                    : "Signing & submitting…"
+                  : "Execute Payout"}
               </button>
               <button
                 onClick={() => setShowDistributeModal(false)}
-                disabled={isSubmitting}
+                disabled={sorobanSplitFlowBusy}
                 className="premium-button w-full rounded-2xl border border-white/10 py-5 text-xs font-bold uppercase tracking-[0.2em] text-muted hover:text-ink hover:bg-white/5"
               >
                 Cancel
@@ -2933,15 +2967,19 @@ export function SplitApp() {
               <button
                 type="button"
                 onClick={onLockProject}
-                disabled={isLocking}
+                disabled={sorobanSplitFlowBusy}
                 className="premium-button w-full rounded-2xl bg-red-500 py-5 text-xs font-black uppercase tracking-[0.3em] text-white disabled:cursor-not-allowed disabled:opacity-50"
               >
-                {isLocking ? "Locking..." : "Lock Project"}
+                {isLocking
+                  ? receipt?.lifecycle === "confirming" && receipt.action === "lock"
+                    ? "Confirming on ledger…"
+                    : "Signing & locking…"
+                  : "Lock Project"}
               </button>
               <button
                 type="button"
                 onClick={() => setShowLockModal(false)}
-                disabled={isLocking}
+                disabled={sorobanSplitFlowBusy}
                 className="premium-button w-full rounded-2xl border border-white/10 py-5 text-xs font-bold uppercase tracking-[0.2em] text-muted hover:bg-white/5 hover:text-ink"
               >
                 Cancel
@@ -3024,10 +3062,18 @@ export function SplitApp() {
               <button
                 type="button"
                 onClick={onDeposit}
-                disabled={isDepositing || !depositAmount || Number.parseFloat(depositAmount) <= 0}
+                disabled={
+                  sorobanSplitFlowBusy ||
+                  !depositAmount ||
+                  Number.parseFloat(depositAmount) <= 0
+                }
                 className="premium-button w-full rounded-2xl bg-blue-500 py-5 text-xs font-black uppercase tracking-[0.3em] text-white disabled:cursor-not-allowed disabled:opacity-50"
               >
-                {isDepositing ? "Processing..." : "Confirm Deposit"}
+                {isDepositing
+                  ? receipt?.lifecycle === "confirming" && receipt.action === "deposit"
+                    ? "Confirming on ledger…"
+                    : "Signing & submitting…"
+                  : "Confirm Deposit"}
               </button>
               <button
                 type="button"
@@ -3035,7 +3081,7 @@ export function SplitApp() {
                   setShowDepositModal(false);
                   setDepositAmount("");
                 }}
-                disabled={isDepositing}
+                disabled={sorobanSplitFlowBusy}
                 className="premium-button w-full rounded-2xl border border-white/10 py-5 text-xs font-bold uppercase tracking-[0.2em] text-muted hover:bg-white/5 hover:text-ink"
               >
                 Cancel

@@ -3,16 +3,18 @@ import cors from "cors";
 import helmet from "helmet";
 import morgan from "morgan";
 import dotenv from "dotenv";
+import swaggerUi from "swagger-ui-express";
 import { healthRouter } from "./routes/health.js";
 import { splitsRouter } from "./routes/splits.js";
 import { usersRouter } from "./routes/users.js";
 import { transactionsRouter } from "./routes/transactions.js";
 import { errorHandler, notFoundHandler } from "./middleware/error.js";
 import { requestIdMiddleware } from "./middleware/request-id.js";
-import { readLimiter, writeLimiter, adminLimiter } from "./middleware/rate-limit.js";
+import { globalLimiter, readLimiter, writeLimiter, adminLimiter, authLimiter } from "./middleware/rate-limit.js";
 import { validateEnv, printEnvDiagnostics } from "./config/env.js";
 import { initDatabase, closeDatabase } from "./services/database.js";
 import { logger } from "./services/logger.js";
+import { generateOpenApi } from "./openapi.js";
 
 dotenv.config();
 
@@ -30,6 +32,8 @@ app.use(helmet());
 app.use(cors({ origin: corsOrigin }));
 app.use(express.json({ limit: "1mb" }));
 app.use(requestIdMiddleware);
+// Global safety-net — must run before all route-specific limiters (#290)
+app.use(globalLimiter);
 app.use(
   morgan((tokens, req, res) => {
     const requestId = res.locals.requestId ?? req.header("x-request-id") ?? "-";
@@ -59,6 +63,9 @@ app.use("/splits", (req, res, next) => {
   if (req.method === "GET") return readLimiter(req, res, next);
   return writeLimiter(req, res, next);
 });
+// Auth endpoints get a stricter per-IP limiter to block credential stuffing
+app.use("/users/register", authLimiter);
+app.use("/users/login", authLimiter);
 app.use("/users", (req, res, next) => {
   if (req.method === "GET") return readLimiter(req, res, next);
   return writeLimiter(req, res, next);
@@ -77,6 +84,33 @@ app.use("/health", healthRouter);
 app.use("/splits", splitsRouter);
 app.use("/users", usersRouter);
 app.use("/transactions", transactionsRouter);
+
+// ─── OpenAPI & Swagger Documentation ──────────────────────────────────────────
+
+// Serve OpenAPI spec as JSON
+app.get("/api/openapi.json", (_req, res) => {
+  const spec = generateOpenApi();
+  res.json(spec);
+});
+
+// Serve Swagger UI at /api/docs
+const swaggerOptions = {
+  customCss: ".swagger-ui .topbar { display: none }",
+  customSiteTitle: "SplitNaira API Documentation",
+  swaggerOptions: {
+    url: "/api/openapi.json",
+    displayOperationId: true,
+    filter: true,
+    showExtensions: true,
+  },
+};
+
+app.use("/api/docs", swaggerUi.serve, swaggerUi.setup(null, swaggerOptions));
+
+// Redirect /api/docs/ to /api/docs
+app.get("/api/docs/", (_req, res) => {
+  res.redirect("/api/docs");
+});
 
 app.use(notFoundHandler);
 app.use(errorHandler);

@@ -7,8 +7,8 @@ use soroban_sdk::{
 mod errors;
 mod events;
 use events::{
-    DepositReceived, DistributionComplete, MetadataUpdated, PaymentSent, ProjectCreated,
-    ProjectLocked, UnallocatedWithdrawn,
+    DepositReceived, DistributionComplete, MetadataUpdated, OwnershipTransferred, PaymentSent,
+    ProjectCreated, ProjectLocked, UnallocatedWithdrawn,
 };
 #[cfg(test)]
 mod tests;
@@ -842,6 +842,50 @@ impl SplitNairaContract {
 
         MetadataUpdated {
             project_id: project_id.clone(),
+        }
+        .publish(&env);
+
+        Ok(())
+    }
+
+    // ----------------------------------------------------------
+    // TRANSFER OWNERSHIP
+    // ----------------------------------------------------------
+
+    /// Transfers ownership of a project to a new address.
+    ///
+    /// Only the current owner can call this. Works on both locked and unlocked
+    /// projects — ownership transfer does not depend on lock state. The new
+    /// owner gains all owner-gated capabilities (update metadata, update
+    /// collaborators on unlocked projects, lock, transfer again).
+    ///
+    /// # Errors
+    /// * `SplitError::NotFound`     - if the project does not exist
+    /// * `SplitError::Unauthorized` - if caller is not the current owner
+    pub fn transfer_project_ownership(
+        env: Env,
+        project_id: Symbol,
+        current_owner: Address,
+        new_owner: Address,
+    ) -> Result<(), SplitError> {
+        let mut project = Self::get_project_or_err(&env, &project_id)?;
+
+        if project.owner != current_owner {
+            return Err(SplitError::Unauthorized);
+        }
+        current_owner.require_auth();
+
+        let previous_owner = project.owner.clone();
+        project.owner = new_owner.clone();
+        env.storage()
+            .persistent()
+            .set(&DataKey::Project(project_id.clone()), &project);
+        Self::bump_project_ttl(&env, &project_id);
+
+        OwnershipTransferred {
+            project_id: project_id.clone(),
+            previous_owner,
+            new_owner,
         }
         .publish(&env);
 

@@ -22,7 +22,8 @@ describe("Frontend API Pagination", () => {
     const result = await getProjectHistory("project-id");
 
     expect(fetch).toHaveBeenCalledWith(
-      expect.stringContaining("/splits/project-id/history")
+      expect.stringContaining("/splits/project-id/history"),
+      undefined
     );
     expect(result).toEqual(mockResponse);
     expect(result).toHaveProperty("items");

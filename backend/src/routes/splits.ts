@@ -166,13 +166,11 @@ export const updateCollaboratorsSchema = z
     }
   });
 
-const adminTokenSchema = z.object({
 const adminTokenActionSchema = z.object({
   admin: stellarAddressSchema.describe("admin"),
   token: stellarAddressSchema.describe("token")
 });
 
-function toCollaboratorScVal(collaborator: z.infer<typeof collaboratorSchema>) {
 const allowlistQuerySchema = z.object({
   start: z.coerce.number().int().min(0).default(0),
   limit: z.coerce.number().int().min(1).max(200).default(100)
@@ -318,12 +316,6 @@ async function buildCreateProjectUnsignedXdr(
     .setTimeout(300)
     .build();
 
-  let preparedTx;
-  try {
-    preparedTx = await server.prepareTransaction(tx);
-  } catch (error) {
-    throw translateSorobanError(error);
-  }
   const preparedTx = await executeWithRetry(() => server.prepareTransaction(tx));
 
   return {
@@ -442,12 +434,6 @@ async function listProjects(start: number, limit: number) {
     .setTimeout(300)
     .build();
 
-  let simulated;
-  try {
-    simulated = await server.simulateTransaction(tx);
-  } catch (error) {
-    throw translateSorobanError(error);
-  }
   const simulated = await executeWithRetry(() => server.simulateTransaction(tx));
   const retval = "result" in simulated ? simulated.result?.retval : undefined;
   if (!retval) {
@@ -485,12 +471,6 @@ async function fetchProjectById(projectId: string) {
     .setTimeout(300)
     .build();
 
-  let simulated;
-  try {
-    simulated = await server.simulateTransaction(tx);
-  } catch (error) {
-    throw translateSorobanError(error);
-  }
   const simulated = await executeWithRetry(() => server.simulateTransaction(tx));
   const retval = "result" in simulated ? simulated.result?.retval : undefined;
   if (!retval) {
@@ -539,12 +519,6 @@ async function buildLockProjectUnsignedXdr(input: LockProjectRequest) {
     .setTimeout(300)
     .build();
 
-  let preparedTx;
-  try {
-    preparedTx = await server.prepareTransaction(tx);
-  } catch (error) {
-    throw translateSorobanError(error);
-  }
   const preparedTx = await executeWithRetry(() => server.prepareTransaction(tx));
   return {
     xdr: preparedTx.toXDR(),
@@ -594,12 +568,6 @@ async function buildDepositUnsignedXdr(input: DepositRequest) {
     .setTimeout(300)
     .build();
 
-  let preparedTx;
-  try {
-    preparedTx = await server.prepareTransaction(tx);
-  } catch (error) {
-    throw translateSorobanError(error);
-  }
   const preparedTx = await executeWithRetry(() => server.prepareTransaction(tx));
   return {
     xdr: preparedTx.toXDR(),
@@ -705,12 +673,6 @@ async function buildUpdateMetadataUnsignedXdr(input: {
     .setTimeout(300)
     .build();
 
-  let preparedTx;
-  try {
-    preparedTx = await server.prepareTransaction(tx);
-  } catch (error) {
-    throw translateSorobanError(error);
-  }
   const preparedTx = await executeWithRetry(() => server.prepareTransaction(tx));
   return {
     xdr: preparedTx.toXDR(),
@@ -766,16 +728,6 @@ splitsRouter.get("/:projectId", async (req: Request, res: Response, next: NextFu
       );
     }
     const projectId = parsedId.data;
-    const parsedProjectId = projectIdParamSchema.safeParse(req.params.projectId);
-    if (!parsedProjectId.success) {
-      return res.status(400).json({
-        error: "validation_error",
-        message: "Invalid request payload.",
-        details: parsedProjectId.error.flatten(),
-        requestId
-      });
-    }
-    const projectId = parsedProjectId.data;
 
     const project = await fetchProjectById(projectId);
     if (!project) {
