@@ -11,11 +11,13 @@
     "build": "npm run build:frontend && npm run build:backend && npm run build:contracts",
     "build:frontend": "cd frontend && npm run build",
     "build:backend": "cd backend && npm run build",
-    "build:contracts": "cd contracts && cargo build",
+    "build:contracts": "cd contracts && cargo build && cd .. && npm run generate:contract-interface && npm run generate:contract-types",
     "test": "npm run test:frontend && npm run test:backend && npm run test:contracts",
     "test:frontend": "cd frontend && npm run test",
     "test:backend": "cd backend && npm run test",
     "test:contracts": "cd contracts && cargo test",
+    "generate:contract-interface": "node contracts/scripts/generate-interface.mjs",
+    "generate:contract-types": "node scripts/generate-contract-types.mjs",
     "lint": "npm run lint:frontend && npm run lint:backend",
     "lint:frontend": "cd frontend && npm run lint",
     "lint:backend": "cd backend && npm run lint",
@@ -27,7 +29,7 @@
   ],
   "devDependencies": {
     "npm-run-all": "^4.1.5",
-    "zod": "^3.24.2"
+    "zod": "^4.3.6"
   },
   "engines": {
     "node": ">=18",

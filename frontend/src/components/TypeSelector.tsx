@@ -3,7 +3,6 @@
 import { useMemo, useState } from "react";
 import { StrKey } from "@stellar/stellar-sdk";
 import { clsx } from "clsx";
-
 import { getTokensByNetwork, getTokenDisplayName } from "@/lib/token-constants";
 
 interface TokenSelectorProps {
@@ -12,6 +11,7 @@ interface TokenSelectorProps {
   network: string | null;
   disabled?: boolean;
   required?: boolean;
+  error?: string; // Added error prop
 }
 
 export function TokenSelector({
@@ -19,13 +19,15 @@ export function TokenSelector({
   onChange,
   network,
   disabled = false,
-  required = false
+  required = false,
+  error, // Destructured error
 }: TokenSelectorProps) {
   const availableTokens = useMemo(() => getTokensByNetwork(network), [network]);
   const [forceShowCustom, setForceShowCustom] = useState(false);
   const [customToken, setCustomToken] = useState("");
   const valueInAvailableTokens = availableTokens.some((t) => t.id === value);
-  const showCustom = forceShowCustom || Boolean(value && !valueInAvailableTokens);
+  const showCustom =
+    forceShowCustom || Boolean(value && !valueInAvailableTokens);
   const customTokenValue = forceShowCustom ? customToken : value;
   const isValidAddress =
     !customTokenValue ||
@@ -72,7 +74,10 @@ export function TokenSelector({
             value={value}
             onChange={handleSelectChange}
             disabled={disabled || availableTokens.length === 0}
-            className="glass-input w-full rounded-2xl px-5 py-4 text-sm cursor-pointer"
+            className={clsx(
+              "glass-input w-full rounded-2xl px-5 py-4 text-sm cursor-pointer",
+              error ? "border-red-500/50 bg-red-500/5" : "",
+            )}
           >
             <option value="">
               {availableTokens.length === 0
@@ -86,6 +91,11 @@ export function TokenSelector({
             ))}
             <option value="custom">Custom Token Address...</option>
           </select>
+          {error && (
+            <p className="text-[10px] font-bold text-red-400 uppercase tracking-tighter px-1">
+              {error}
+            </p>
+          )}
 
           {value && (
             <div className="flex items-start justify-between rounded-2xl bg-white/2 p-4 border border-white/5">
@@ -120,16 +130,16 @@ export function TokenSelector({
               placeholder="G... or C... (contract address)"
               className={clsx(
                 "glass-input w-full rounded-2xl px-5 py-4 text-sm",
-                customTokenValue && !isValidAddress
+                (customTokenValue && !isValidAddress) || error
                   ? "border-red-500/50 bg-red-500/5"
-                  : ""
+                  : "",
               )}
             />
-            {customTokenValue && !isValidAddress && (
+            {(customTokenValue && !isValidAddress) || error ? (
               <p className="mt-2 px-1 text-[10px] font-bold text-red-400 uppercase tracking-tighter">
-                Invalid Stellar address format
+                {error || "Invalid Stellar address format"}
               </p>
-            )}
+            ) : null}
           </div>
 
           <div className="flex gap-2">

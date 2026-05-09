@@ -1,19 +1,9 @@
 export type StellarNetwork = "testnet" | "mainnet";
 
-export interface SplitProject {
-  projectId: string;
-  title: string;
-  projectType: string;
-  token: string;
-  owner: string;
-  collaborators: Array<{
-    address: string;
-    alias: string;
-    basisPoints: number;
-  }>;
-  locked: boolean;
-  totalDistributed: string;
-  distributionRound: number;
+export { type SplitProject, type Collaborator } from "../generated/contract-types.js";
+
+// Extended type for frontend with additional computed fields
+export interface SplitProjectWithBalance extends SplitProject {
   balance: string;
 }
 

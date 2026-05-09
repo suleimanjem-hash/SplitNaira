@@ -137,6 +137,21 @@ Returns count of allowlisted token addresses.
 ### `get_admin() -> Option<Address>`
 Returns current admin.
 
+## Machine-Consumable Interface
+
+The generated interface artifact lives at:
+
+- `contracts/interface/splitnaira.contract-interface.json`
+
+It is designed for backend and frontend tooling that needs contract method names, argument order/type names, event topic/data shapes, app-facing contract types, storage key variants, and error codes without scraping Rust or duplicating README tables.
+
+Refresh it whenever `contracts/lib.rs`, `contracts/events.rs`, `contracts/errors.rs`, or `contracts/Cargo.toml` changes. The generator uses Node.js and no additional npm packages:
+
+```bash
+npm run generate:contract-interface
+```
+
+`npm run build:contracts` also refreshes the artifact after a successful contract build. Commit the refreshed JSON with the contract change so app layers and code generators can diff the contract surface in review.
 ## Regression Guarantees
 
 The contract test suite includes upgrade-safety regression coverage for the app-facing assumptions most likely to break compatibility:

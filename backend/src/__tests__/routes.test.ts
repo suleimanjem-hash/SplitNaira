@@ -1,5 +1,4 @@
-import { describe, it, expect, vi, beforeEach, beforeAll } from "vitest";
-import { describe, it, expect, vi } from "vitest";
+import { beforeAll, describe, expect, it, vi } from "vitest";
 import request from "supertest";
 import { app } from "../index.js";
 
@@ -49,7 +48,7 @@ vi.mock("@stellar/stellar-sdk", () => {
 });
 
 vi.mock("../services/stellar.js", async (importOriginal) => {
-  const actual = await importOriginal<any>();
+  const actual = await importOriginal();
   return {
     ...actual,
     loadStellarConfig: vi.fn(() => ({
@@ -57,8 +56,6 @@ vi.mock("../services/stellar.js", async (importOriginal) => {
       sorobanRpcUrl: "http://rpc",
       networkPassphrase: "test",
       contractId: "CBLASIRZ7CUKC7S5IS3VSNMQGKZ5FTRWLHZZXH7H4YG6ZLRFPJF5H2LR",
-      simulatorAccount: "GD5T6IPRNCKFOHQ3STZ5BTEYI5V6U5U6U5U6U5U6U5U6U5U6U5U6U5U6"
-      contractId: "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABSC4",
       simulatorAccount: "test_account"
     })),
     getStellarRpcServer: vi.fn(() => ({
@@ -75,10 +72,6 @@ vi.mock("../services/stellar.js", async (importOriginal) => {
       }),
       getEvents: vi.fn().mockResolvedValue({ events: [] })
     })),
-    getStellarRpcServer: vi.fn().mockImplementation(() => {
-      const { rpc } = (vi.mocked(await import("@stellar/stellar-sdk")));
-      return new rpc.Server("http://rpc");
-    })
     executeWithRetry: vi.fn(async (fn) => fn()),
     getCached: vi.fn(() => undefined),
     setCached: vi.fn(),
@@ -86,15 +79,25 @@ vi.mock("../services/stellar.js", async (importOriginal) => {
     invalidateCacheByPrefix: vi.fn(),
     getCacheStats: vi.fn(() => ({ hits: 0, misses: 0, evictions: 0 })),
     READ_CACHE_TTL_MS: 30000,
-    RequestValidationError
   };
 });
 
+// Mock database service for health checks
+vi.mock("../services/database.js", () => ({
+  getDataSource: vi.fn(() => ({
+    isInitialized: true
+  })),
+  initDatabase: vi.fn().mockResolvedValue({}),
+  closeDatabase: vi.fn().mockResolvedValue({})
+}));
 
 describe("Route Integration Tests", () => {
   beforeAll(() => {
+    process.env.DATABASE_URL = "https://example.com/postgres";
     process.env.SIMULATOR_ACCOUNT = "GD5T6IPRNCKFOHQ3STZ5BTEYI5V6U5U6U5U6U5U6U5U6U5U6U5U6U5U6";
     process.env.CONTRACT_ID = "CBLASIRZ7CUKC7S5IS3VSNMQGKZ5FTRWLHZZXH7H4YG6ZLRFPJF5H2LR";
+    process.env.HORIZON_URL = "https://horizon-testnet.stellar.org";
+    process.env.SOROBAN_RPC_URL = "https://soroban-testnet.stellar.org";
     process.env.SOROBAN_NETWORK_PASSPHRASE = "test";
   });
 
@@ -111,19 +114,49 @@ describe("Route Integration Tests", () => {
       const res = await request(app).get("/health");
       expect(res.status).toBe(200);
       expect(res.body.status).toBe("ok");
+      expect(res.body).toHaveProperty("uptime");
+      expect(res.body).toHaveProperty("timestamp");
     });
   });
 
-  describe("GET /splits", () => {
-    it("should return validation error when simulator account is unavailable", async () => {
-      const res = await request(app).get("/splits");
+  describe("GET /health/live", () => {
+    it("should return 200 and ok status for liveness", async () => {
+      const res = await request(app).get("/health/live");
       expect(res.status).toBe(200);
-      expect(Array.isArray(res.body)).toBe(true);
+      expect(res.body.status).toBe("ok");
+    });
+  });
+
+  describe("GET /health/ready", () => {
+    it("should return 200 and ready status when dependencies are ok", async () => {
+      const res = await request(app).get("/health/ready");
+      expect(res.status).toBe(200);
+      expect(res.body.status).toBe("ready");
+    });
+
+    it("should return 503 when environment variables are missing", async () => {
+      // Temporarily remove required env vars
+      const originalSimulatorAccount = process.env.SIMULATOR_ACCOUNT;
+      const originalContractId = process.env.CONTRACT_ID;
+      delete process.env.SIMULATOR_ACCOUNT;
+      delete process.env.CONTRACT_ID;
+
+      try {
+        const res = await request(app).get("/health/ready");
+        expect(res.status).toBe(503);
+        expect(res.body.status).toBe("not_ready");
+        expect(res.body.error).toBe("missing_config");
+        expect(res.body).toHaveProperty("requestId");
+      } finally {
+        // Restore env vars
+        process.env.SIMULATOR_ACCOUNT = originalSimulatorAccount;
+        process.env.CONTRACT_ID = originalContractId;
+      }
     });
   });
 
   describe("Error Handling & Request ID", () => {
-    it("should propagate request-id in internal error responses", async () => {
+    it("should propagate request-id in validation error responses", async () => {
       const res = await request(app)
         .get("/splits/invalid-project-id!!!")
         .set("x-request-id", "test-request-id");

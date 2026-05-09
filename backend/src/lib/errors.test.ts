@@ -51,6 +51,14 @@ describe("translateSorobanError", () => {
     expect(appError.code).toBe(ErrorCode.ACCOUNT_NOT_FOUND);
   });
 
+  it("handles generic not found errors", () => {
+    const appError = translateSorobanError({ message: "resource not found" });
+
+    expect(appError.type).toBe(ErrorType.ACCOUNT_STATE);
+    expect(appError.code).toBe(ErrorCode.CONTRACT_NOT_FOUND);
+    expect(appError.remediation?.action).toBe("Check Identifier");
+  });
+
   it("handles simulation results in object format", () => {
     const err = {
       simulationResult: {

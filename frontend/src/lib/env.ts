@@ -9,10 +9,7 @@ import { z } from "zod";
 const frontendEnvSchema = z.object({
   NEXT_PUBLIC_STELLAR_NETWORK: z
     .enum(["testnet", "mainnet"], {
-      errorMap: () => ({
-        message:
-          'NEXT_PUBLIC_STELLAR_NETWORK must be "testnet" or "mainnet"'
-      })
+      error: 'NEXT_PUBLIC_STELLAR_NETWORK must be "testnet" or "mainnet"'
     })
     .default("testnet"),
 

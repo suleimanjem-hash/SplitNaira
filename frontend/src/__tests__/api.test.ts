@@ -1,8 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { getProjectHistory } from "../lib/api";
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:3001";
-
 describe("Frontend API Pagination", () => {
   beforeEach(() => {
     vi.stubGlobal("fetch", vi.fn());
@@ -14,15 +12,18 @@ describe("Frontend API Pagination", () => {
       nextCursor: "cursor-123"
     };
 
-    (fetch as any).mockResolvedValue({
+    const mockFetch = vi.mocked(fetch);
+    mockFetch.mockResolvedValue({
       ok: true,
       json: async () => mockResponse
-    });
+    } as Response);
 
     const result = await getProjectHistory("project-id");
 
+    expect(mockFetch).toHaveBeenCalledWith(
     expect(fetch).toHaveBeenCalledWith(
-      expect.stringContaining("/splits/project-id/history")
+      expect.stringContaining("/splits/project-id/history"),
+      undefined
     );
     expect(result).toEqual(mockResponse);
     expect(result).toHaveProperty("items");
@@ -32,14 +33,15 @@ describe("Frontend API Pagination", () => {
   it("getProjectHistory appends cursor to URL when provided", async () => {
     const mockResponse = { items: [], nextCursor: null };
 
-    (fetch as any).mockResolvedValue({
+    const mockFetch = vi.mocked(fetch);
+    mockFetch.mockResolvedValue({
       ok: true,
       json: async () => mockResponse
-    });
+    } as Response);
 
     await getProjectHistory("project-id", "my-cursor");
 
-    const calledUrl = (fetch as any).mock.calls[0][0];
+    const calledUrl = mockFetch.mock.calls[0][0];
     const url = new URL(calledUrl);
     expect(url.searchParams.get("cursor")).toBe("my-cursor");
   });
@@ -47,16 +49,14 @@ describe("Frontend API Pagination", () => {
   it("fails if response is an array (regression test for old assumption)", async () => {
     const mockResponse = [{ id: "1" }]; // Old format: just an array
 
-    (fetch as any).mockResolvedValue({
+    const mockFetch = vi.mocked(fetch);
+    mockFetch.mockResolvedValue({
       ok: true,
       json: async () => mockResponse
-    });
+    } as Response);
 
     const result = await getProjectHistory("project-id");
-    
-    // In our new implementation, we cast to { items, nextCursor }.
-    // If it's an array, result.items will be undefined.
-    // We can add a check in the API client or just assert here.
+
     expect(result.items).toBeUndefined();
   });
 });

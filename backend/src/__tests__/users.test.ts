@@ -1,24 +1,57 @@
-import { describe, it, expect, beforeAll, afterAll } from "vitest";
+import express from "express";
 import request from "supertest";
-import { app } from "../index.js";
-import { initDatabase, closeDatabase, getDataSource } from "../services/database.js";
-import { User } from "../entities/User.js";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+
+import { errorHandler, notFoundHandler } from "../middleware/error.js";
+import { requestIdMiddleware } from "../middleware/request-id.js";
+
+const findOneMock = vi.fn();
+const createMock = vi.fn();
+const saveMock = vi.fn();
+
+vi.mock("../services/database.js", () => ({
+  getDataSource: () => ({
+    getRepository: () => ({
+      findOne: findOneMock,
+      create: createMock,
+      save: saveMock
+    })
+  })
+}));
+
+import { usersRouter } from "../routes/users.js";
+
+const NOW = new Date("2026-04-28T12:00:00.000Z");
+
+function createApp() {
+  const app = express();
+  app.use(express.json());
+  app.use(requestIdMiddleware);
+  app.use("/users", usersRouter);
+  app.use(notFoundHandler);
+  app.use(errorHandler);
+  return app;
+}
 
 describe("User Registration API", () => {
-  beforeAll(async () => {
-    await initDatabase();
-  });
-
-  afterAll(async () => {
-    // Clean up test data
-    const dataSource = getDataSource();
-    const userRepository = dataSource.getRepository(User);
-    await userRepository.delete({});
-    await closeDatabase();
+  beforeEach(() => {
+    vi.clearAllMocks();
+    createMock.mockImplementation((input) => input);
+    saveMock.mockImplementation(async (input) => ({
+      id: "11111111-1111-4111-8111-111111111111",
+      role: "user",
+      isActive: true,
+      createdAt: NOW,
+      updatedAt: NOW,
+      ...input
+    }));
   });
 
   describe("POST /users/register", () => {
     it("should register a new user with valid wallet address", async () => {
+      findOneMock.mockResolvedValue(null);
+      const app = createApp();
+
       const response = await request(app)
         .post("/users/register")
         .send({
@@ -37,6 +70,9 @@ describe("User Registration API", () => {
     });
 
     it("should register a user without optional fields", async () => {
+      findOneMock.mockResolvedValue(null);
+      const app = createApp();
+
       const response = await request(app)
         .post("/users/register")
         .send({
@@ -49,23 +85,23 @@ describe("User Registration API", () => {
     });
 
     it("should reject duplicate wallet address", async () => {
-      const walletAddress = "GCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC";
-      
-      // First registration
-      await request(app)
-        .post("/users/register")
-        .send({ walletAddress });
+      findOneMock.mockResolvedValue({
+        id: "existing-user",
+        walletAddress: "GCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC"
+      });
+      const app = createApp();
 
-      // Duplicate registration
       const response = await request(app)
         .post("/users/register")
-        .send({ walletAddress });
+        .send({ walletAddress: "GCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC" });
 
       expect(response.status).toBe(400);
       expect(response.body.error).toBeDefined();
     });
 
     it("should reject invalid wallet address format", async () => {
+      const app = createApp();
+
       const response = await request(app)
         .post("/users/register")
         .send({
@@ -77,6 +113,8 @@ describe("User Registration API", () => {
     });
 
     it("should reject invalid email format", async () => {
+      const app = createApp();
+
       const response = await request(app)
         .post("/users/register")
         .send({
@@ -92,18 +130,19 @@ describe("User Registration API", () => {
   describe("GET /users/:walletAddress", () => {
     it("should retrieve user by wallet address", async () => {
       const walletAddress = "GEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEE";
-      
-      // Register user first
-      await request(app)
-        .post("/users/register")
-        .send({
-          walletAddress,
-          alias: "GetTestUser"
-        });
+      findOneMock.mockResolvedValue({
+        id: "22222222-2222-4222-8222-222222222222",
+        walletAddress,
+        email: undefined,
+        alias: "GetTestUser",
+        role: "user",
+        isActive: true,
+        createdAt: NOW,
+        updatedAt: NOW
+      });
+      const app = createApp();
 
-      // Retrieve user
-      const response = await request(app)
-        .get(`/users/${walletAddress}`);
+      const response = await request(app).get(`/users/${walletAddress}`);
 
       expect(response.status).toBe(200);
       expect(response.body.walletAddress).toBe(walletAddress);
@@ -111,13 +150,18 @@ describe("User Registration API", () => {
     });
 
     it("should return 404 for non-existent user", async () => {
+      findOneMock.mockResolvedValue(null);
+      const app = createApp();
+
       const response = await request(app)
-        .get("/users/GFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF");
+        .get("/users/GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF");
 
       expect(response.status).toBe(404);
     });
 
     it("should reject invalid wallet address format", async () => {
+      const app = createApp();
+
       const response = await request(app)
         .get("/users/INVALID");
 

@@ -10,6 +10,7 @@ import {
 // ─── Fixtures ─────────────────────────────────────────────────────────────────
 
 const VALID_ENV: Record<string, string> = {
+  DATABASE_URL: "https://example.com/postgres",
   HORIZON_URL: "https://horizon-testnet.stellar.org",
   SOROBAN_RPC_URL: "https://soroban-testnet.stellar.org",
   SOROBAN_NETWORK_PASSPHRASE: "Test SDF Network ; September 2015",

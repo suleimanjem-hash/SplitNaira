@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { DM_Sans, Syne } from "next/font/google";
+import { getLocale } from "next-intl/server";
 import "./globals.css";
 import { ToastProvider } from "@/components/toast-provider";
 import { WalletProvider } from "@/components/wallet-provider";
@@ -23,13 +24,15 @@ export const metadata: Metadata = {
   description: "Royalty splitting for creative collaborators on Stellar."
 };
 
-export default function RootLayout({
+export default async function RootLayout({
   children
 }: {
   children: React.ReactNode;
 }) {
+  const locale = await getLocale();
+
   return (
-    <html lang="en">
+    <html lang={locale}>
       <body className={`${dmSans.variable} ${syne.variable} antialiased`}>
         <AppErrorBoundary>
           <QueryProvider>

@@ -333,6 +333,114 @@ registry.registerPath({
   },
 });
 
+// ─── Health Endpoints ─────────────────────────────────────────────────────────
+
+const HealthResponseSchema = registry.register(
+  "HealthResponse",
+  z.object({
+    status: z.enum(["ok", "not_ready"]),
+    uptime: z.number().optional().describe("Server uptime in seconds"),
+    timestamp: z.string().optional().describe("ISO 8601 timestamp"),
+  })
+);
+
+const ReadinessResponseSchema = registry.register(
+  "ReadinessResponse",
+  z.object({
+    status: z.enum(["ok", "not_ready"]),
+    error: z.string().optional().describe("Error code if not ready"),
+    message: z.string().optional().describe("Error message if not ready"),
+    issues: z.array(z.string()).optional().describe("List of configuration issues"),
+    requestId: z.string().optional().describe("Request ID for tracing"),
+  })
+);
+
+registry.registerPath({
+  method: "get",
+  path: "/health",
+  summary: "Get overall health status",
+  tags: ["Health"],
+  responses: {
+    200: {
+      description: "Server health information",
+      content: {
+        "application/json": {
+          schema: HealthResponseSchema,
+        },
+      },
+    },
+  },
+});
+
+registry.registerPath({
+  method: "get",
+  path: "/health/live",
+  summary: "Liveness check (Kubernetes compatible)",
+  tags: ["Health"],
+  responses: {
+    200: {
+      description: "Server is alive",
+      content: {
+        "application/json": {
+          schema: z.object({
+            status: z.literal("ok"),
+          }),
+        },
+      },
+    },
+  },
+});
+
+registry.registerPath({
+  method: "get",
+  path: "/health/ready",
+  summary: "Readiness check (Kubernetes compatible)",
+  tags: ["Health"],
+  responses: {
+    200: {
+      description: "Server is ready to accept traffic",
+      content: {
+        "application/json": {
+          schema: z.object({
+            status: z.literal("ready"),
+          }),
+        },
+      },
+    },
+    503: {
+      description: "Server is not ready (missing configuration)",
+      content: {
+        "application/json": {
+          schema: ReadinessResponseSchema,
+        },
+      },
+    },
+  },
+});
+
+// ─── Root Endpoint ────────────────────────────────────────────────────────────
+
+registry.registerPath({
+  method: "get",
+  path: "/",
+  summary: "Get API information",
+  tags: ["System"],
+  responses: {
+    200: {
+      description: "API metadata",
+      content: {
+        "application/json": {
+          schema: z.object({
+            name: z.string(),
+            status: z.string(),
+            version: z.string(),
+          }),
+        },
+      },
+    },
+  },
+});
+
 // ─── Generation ───────────────────────────────────────────────────────────────
 
 export function generateOpenApi() {

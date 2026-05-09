@@ -85,6 +85,9 @@ export function validateEnv(): BackendEnv {
   if (!result.success) {
     const lines = result.error.issues.map((issue) => {
       const key = issue.path.join(".") || "unknown";
+      if (key === "HORIZON_URL" && issue.message.includes("expected string")) {
+        return "  ✗  HORIZON_URL: HORIZON_URL is required — set it to the Stellar Horizon endpoint, e.g. https://horizon-testnet.stellar.org";
+      }
       return `  ✗  ${key}: ${issue.message}`;
     });
 

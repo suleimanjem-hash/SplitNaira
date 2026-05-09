@@ -1,36 +1,65 @@
+import "reflect-metadata";
 import { DataSource } from "typeorm";
 import { getEnv } from "../config/env.js";
+import { User } from "../entities/User.js";
+import { TransactionRecord } from "../entities/Transaction.js";
 import { logger } from "./logger.js";
 
 let AppDataSource: DataSource | null = null;
+let initializationPromise: Promise<DataSource> | null = null;
 
 export async function initDatabase(): Promise<DataSource> {
   if (AppDataSource?.isInitialized) {
     return AppDataSource;
   }
 
-  const env = getEnv();
-  const databaseUrl = env.DATABASE_URL;
-
-  AppDataSource = new DataSource({
-    type: "postgres",
-    url: databaseUrl,
-    synchronize: process.env.NODE_ENV !== "production",
-    logging: process.env.NODE_ENV === "development",
-    entities: ["src/entities/*.ts"],
-    migrations: ["src/migrations/*.ts"],
-    migrationsTableName: "migrations"
-  });
-
-  try {
-    await AppDataSource.initialize();
-    logger.info("Database connection established");
-  } catch (error) {
-    logger.error("Failed to initialize database", { error });
-    throw error;
+  if (initializationPromise) {
+    return initializationPromise;
   }
 
-  return AppDataSource;
+  initializationPromise = (async () => {
+    const env = getEnv();
+    const databaseUrl = env.DATABASE_URL;
+
+    if (!databaseUrl) {
+      throw new Error("DATABASE_URL is required for database initialization.");
+    }
+
+    const needsSsl =
+      new URL(databaseUrl).hostname !== "localhost" &&
+      new URL(databaseUrl).hostname !== "127.0.0.1" &&
+      !databaseUrl.includes("sslmode=") &&
+      !databaseUrl.includes("ssl=");
+
+    AppDataSource = new DataSource({
+      type: "postgres",
+      url: databaseUrl,
+      synchronize: process.env.NODE_ENV !== "production",
+      logging: process.env.NODE_ENV === "development",
+      entities: [User, TransactionRecord],
+      migrations: ["src/migrations/*.ts"],
+      migrationsTableName: "migrations",
+      ssl: needsSsl
+        ? {
+            rejectUnauthorized: false
+          }
+        : false
+    });
+
+    try {
+      await AppDataSource.initialize();
+      logger.info("Database connection established");
+      return AppDataSource;
+    } catch (error) {
+      AppDataSource = null;
+      logger.error("Failed to initialize database", { error });
+      throw error;
+    } finally {
+      initializationPromise = null;
+    }
+  })();
+
+  return initializationPromise;
 }
 
 export function getDataSource(): DataSource {
@@ -41,9 +70,19 @@ export function getDataSource(): DataSource {
 }
 
 export async function closeDatabase(): Promise<void> {
+  if (initializationPromise && !AppDataSource?.isInitialized) {
+    try {
+      await initializationPromise;
+    } catch {
+      // Ignore initialization failures during cleanup.
+    }
+  }
+
   if (AppDataSource?.isInitialized) {
     await AppDataSource.destroy();
-    AppDataSource = null;
     logger.info("Database connection closed");
   }
+
+  AppDataSource = null;
+  initializationPromise = null;
 }

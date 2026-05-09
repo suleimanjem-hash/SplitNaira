@@ -8,6 +8,8 @@ import {
   signTransaction
 } from "@stellar/freighter-api";
 
+export { createSorobanRpcServer, submitSorobanTransactionAndPoll } from "./soroban-transaction";
+
 export interface WalletState {
   connected: boolean;
   address: string | null;

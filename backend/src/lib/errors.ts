@@ -1,5 +1,3 @@
-import { rpc, xdr, ScVal } from "@stellar/stellar-sdk";
-
 export enum ErrorType {
   CONTRACT = "CONTRACT",
   AUTH = "AUTH",
@@ -53,7 +51,7 @@ export class AppError extends Error {
     public code: ErrorCode,
     message: string,
     public remediation?: RemediationHint,
-    public details?: any
+    public details?: unknown
   ) {
     super(message);
     this.name = "AppError";
@@ -143,12 +141,135 @@ const CONTRACT_ERROR_MAP: Record<number, { code: ErrorCode; message: string; rem
   }
 };
 
-export function translateSorobanError(err: any): AppError {
-  const errorMessage = err?.message || String(err);
+const CONTRACT_ERROR_PATTERN = /Error\(Contract, Code\((\d+)\)\)/;
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
+function getErrorMessage(err: unknown): string {
+  if (err instanceof Error) {
+    return err.message;
+  }
+
+  if (isRecord(err) && typeof err.message === "string") {
+    return err.message;
+  }
+
+  return String(err);
+}
+
+function getErrorStack(err: unknown): string | undefined {
+  if (err instanceof Error) {
+    return err.stack;
+  }
+
+  if (isRecord(err) && typeof err.stack === "string") {
+    return err.stack;
+  }
+
+  return undefined;
+}
+
+function getSimulationResultError(err: unknown): string | undefined {
+  if (!isRecord(err)) {
+    return undefined;
+  }
+
+  const simulationResult = err.simulationResult;
+  if (isRecord(simulationResult) && typeof simulationResult.error === "string") {
+    return simulationResult.error;
+  }
+
+  const response = err.response;
+  if (!isRecord(response) || !Array.isArray(response.results)) {
+    return undefined;
+  }
+
+  const [firstResult] = response.results;
+  if (isRecord(firstResult) && typeof firstResult.error === "string") {
+    return firstResult.error;
+  }
+
+  return undefined;
+}
+
+function createAppError(
+  type: ErrorType,
+  code: ErrorCode,
+  message: string,
+  remediation: RemediationHint,
+  details?: Record<string, unknown>
+): AppError {
+  return new AppError(type, code, message, remediation, details);
+}
+
+function createRawErrorAppError(
+  type: ErrorType,
+  code: ErrorCode,
+  message: string,
+  remediation: RemediationHint,
+  rawError: string
+): AppError {
+  return createAppError(type, code, message, remediation, { rawError });
+}
+
+function translateRawSorobanError(rawError: string): AppError | null {
+  const contractErrorCodeMatch = rawError.match(CONTRACT_ERROR_PATTERN);
+  if (contractErrorCodeMatch) {
+    const code = parseInt(contractErrorCodeMatch[1], 10);
+    const mapped = CONTRACT_ERROR_MAP[code];
+
+    if (mapped) {
+      return createRawErrorAppError(
+        ErrorType.CONTRACT,
+        mapped.code,
+        mapped.message,
+        mapped.remediation,
+        rawError
+      );
+    }
+  }
+
+  if (rawError.includes("Error(Auth,")) {
+    return createRawErrorAppError(
+      ErrorType.AUTH,
+      ErrorCode.UNAUTHORIZED,
+      "Stellar authorization failed",
+      { message: "The transaction signature or authorization is invalid.", action: "Re-authenticate Wallet" },
+      rawError
+    );
+  }
+
+  if (rawError.includes("Error(Storage, Code(MissingValue))")) {
+    return createRawErrorAppError(
+      ErrorType.ACCOUNT_STATE,
+      ErrorCode.CONTRACT_NOT_FOUND,
+      "Contract or state value not found",
+      { message: "The contract or required data is missing from the network.", action: "Verify Deployment" },
+      rawError
+    );
+  }
+
+  if (rawError.includes("Error(Budget,")) {
+    return createRawErrorAppError(
+      ErrorType.RPC,
+      ErrorCode.RESOURCE_LIMIT_EXCEEDED,
+      "Soroban resource limit exceeded",
+      { message: "The transaction requires more resources than allowed.", action: "Increase Fees" },
+      rawError
+    );
+  }
+
+  return null;
+}
+
+export function translateSorobanError(err: unknown): AppError {
+  const errorMessage = getErrorMessage(err);
 
   // 1. Handle HTTP/RPC connectivity issues
   if (errorMessage.includes("fetch failed") || errorMessage.includes("ECONNREFUSED") || errorMessage.includes("Network Error")) {
-    return new AppError(
+    return createAppError(
       ErrorType.RPC,
       ErrorCode.RPC_CONNECTIVITY,
       "Unable to connect to Soroban RPC",
@@ -157,63 +278,29 @@ export function translateSorobanError(err: any): AppError {
   }
 
   // 2. Handle Simulation Failures (Host & Contract Errors)
-  const simulationResult = err?.simulationResult || err?.response?.results?.[0];
-  const rawError = simulationResult?.error || errorMessage;
-  
+  const simulationResultError = getSimulationResultError(err);
+  const rawError = simulationResultError || errorMessage;
+
   if (rawError) {
-    // Contract errors: Error(Contract, Code(1))
-    const contractErrorCodeMatch = rawError.match(/Error\(Contract, Code\((\d+)\)\)/);
-    if (contractErrorCodeMatch) {
-      const code = parseInt(contractErrorCodeMatch[1], 10);
-      const mapped = CONTRACT_ERROR_MAP[code];
-      if (mapped) {
-        return new AppError(
-          ErrorType.CONTRACT,
-          mapped.code,
-          mapped.message,
-          mapped.remediation,
-          { rawError }
-        );
-      }
+    const translatedRawError = translateRawSorobanError(rawError);
+    if (translatedRawError) {
+      return translatedRawError;
     }
 
-    // Auth failures: Error(Auth, Code(1))
-    if (rawError.includes("Error(Auth,")) {
-      return new AppError(
-        ErrorType.AUTH,
-        ErrorCode.UNAUTHORIZED,
-        "Stellar authorization failed",
-        { message: "The transaction signature or authorization is invalid.", action: "Re-authenticate Wallet" },
-        { rawError }
-      );
-    }
-
-    // Storage / Missing Contract: Error(Storage, Code(MissingValue))
-    if (rawError.includes("Error(Storage, Code(MissingValue))")) {
-      return new AppError(
-        ErrorType.ACCOUNT_STATE,
-        ErrorCode.CONTRACT_NOT_FOUND,
-        "Contract or state value not found",
-        { message: "The contract or required data is missing from the network.", action: "Verify Deployment" },
-        { rawError }
-      );
-    }
-
-    // Resource limits: Error(Budget, ...)
-    if (rawError.includes("Error(Budget,")) {
-      return new AppError(
+    if (simulationResultError) {
+      return createAppError(
         ErrorType.RPC,
-        ErrorCode.RESOURCE_LIMIT_EXCEEDED,
-        "Soroban resource limit exceeded",
-        { message: "The transaction requires more resources than allowed.", action: "Increase Fees" },
-        { rawError }
+        ErrorCode.SIMULATION_FAILED,
+        "Soroban simulation failed",
+        { message: "The network could not simulate this transaction.", action: "Retry Request" },
+        { rawError, originalError: err }
       );
     }
   }
 
   // 3. Handle specific account errors
   if (errorMessage.includes("account not found") || errorMessage.includes("op_no_trust")) {
-    return new AppError(
+    return createAppError(
       ErrorType.ACCOUNT_STATE,
       ErrorCode.ACCOUNT_NOT_FOUND,
       "Stellar account not found or missing trustline",
@@ -223,7 +310,7 @@ export function translateSorobanError(err: any): AppError {
 
   // 4. Handle generic "not found" which might be a project or contract
   if (errorMessage.includes("not found")) {
-    return new AppError(
+    return createAppError(
       ErrorType.ACCOUNT_STATE,
       ErrorCode.CONTRACT_NOT_FOUND,
       "Resource not found",
@@ -232,14 +319,12 @@ export function translateSorobanError(err: any): AppError {
     );
   }
 
-
-  // 4. Default Internal Error
-  return new AppError(
+  // 5. Default Internal Error
+  return createAppError(
     ErrorType.INTERNAL,
     ErrorCode.INTERNAL_ERROR,
     errorMessage || "An unexpected error occurred",
     { message: "Our team has been notified. Please try again later." },
-    { stack: err.stack, originalError: err }
+    { stack: getErrorStack(err), originalError: err }
   );
 }
-

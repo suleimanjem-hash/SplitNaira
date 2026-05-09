@@ -57,9 +57,6 @@ vi.mock("@stellar/stellar-sdk", () => {
     rpc: {
       Server: vi.fn(() => serverMock),
     },
-    Address: vi.fn().mockImplementation((address: string) => ({
-      toScVal: () => ({ toXDR: () => `MOCKED_SCVAL_${address}` }),
-    })),
     xdr: {
       ScVal: {
         scvMap: (items: unknown[]) => items,
@@ -84,10 +81,10 @@ const createApp = () => {
 beforeAll(() => {
   process.env.HORIZON_URL = "https://horizon.test";
   process.env.SOROBAN_RPC_URL = "https://soroban.test";
-  process.env.SOROBAN_NETWORK_PASSPHRASE = "test";
-  process.env.CONTRACT_ID =
-    "CBLASIRZ7CUKC7S5IS3VSNMQGKZ5FTRWLHZZXH7H4YG6ZLRFPJF5H2LR";
-  process.env.SIMULATOR_ACCOUNT = "test_account";
+  process.env.SOROBAN_NETWORK_PASSPHRASE = "Test SDF Network";
+  process.env.CONTRACT_ID = "TESTCONTRACT";
+  process.env.SIMULATOR_ACCOUNT = "GTESTSIMULATOR";
+  process.env.DATABASE_URL = "https://example.com/postgres";
 });
 
 beforeEach(() => {

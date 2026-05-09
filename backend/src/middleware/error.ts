@@ -26,7 +26,12 @@ export function errorHandler(
 
   if (isAppError) {
     const appError = err as AppError;
-    const status = appError.type === ErrorType.VALIDATION || appError.type === ErrorType.AUTH ? 400 : 500;
+    const status =
+      appError.code === ErrorCode.NOT_FOUND
+        ? 404
+        : appError.type === ErrorType.VALIDATION || appError.type === ErrorType.AUTH
+          ? 400
+          : 500;
     
     // Log structured error
     console.error({

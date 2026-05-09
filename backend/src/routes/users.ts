@@ -87,7 +87,6 @@ usersRouter.post("/register", async (req: Request, res: Response, next: NextFunc
  */
 usersRouter.get("/:walletAddress", async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const requestId = res.locals.requestId;
     const { walletAddress } = req.params;
 
     // Validate wallet address format

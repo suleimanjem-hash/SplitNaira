@@ -154,3 +154,26 @@ impl UnallocatedWithdrawn {
         );
     }
 }
+
+/// Emitted when a project's ownership is transferred to a new owner.
+///
+/// Topics:  ["ownership_transferred", project_id]
+/// Data:    (previous_owner address, new_owner address)
+#[derive(Clone, Debug)]
+pub struct OwnershipTransferred {
+    pub project_id: Symbol,
+    pub previous_owner: Address,
+    pub new_owner: Address,
+}
+
+impl OwnershipTransferred {
+    pub fn publish(&self, env: &Env) {
+        env.events().publish(
+            (
+                Symbol::new(env, "ownership_transferred"),
+                self.project_id.clone(),
+            ),
+            (self.previous_owner.clone(), self.new_owner.clone()),
+        );
+    }
+}

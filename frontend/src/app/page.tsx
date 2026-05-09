@@ -1,12 +1,7 @@
-"use client";
+import { redirect } from "next/navigation";
 
-import { SplitApp } from "@/components/split-app";
-import { PageTransition } from "@/components/page-transition";
+import { routing } from "@/i18n/routing";
 
-export default function Home() {
-  return (
-    <PageTransition motionKey="home">
-      <SplitApp />
-    </PageTransition>
-  );
+export default function IndexPage() {
+  redirect(`/${routing.defaultLocale}`);
 }

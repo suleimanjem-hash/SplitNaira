@@ -11,24 +11,24 @@ export class User {
   @PrimaryGeneratedColumn("uuid")
   id!: string;
 
-  @Column({ unique: true })
+  @Column({ unique: true, type: "varchar", length: 128 })
   walletAddress!: string;
 
-  @Column({ nullable: true })
+  @Column({ type: "varchar", length: 128, nullable: true })
   email?: string;
 
-  @Column({ nullable: true })
+  @Column({ type: "varchar", length: 128, nullable: true })
   alias?: string;
 
-  @Column({ default: "user" })
+  @Column({ type: "varchar", length: 32, default: "user" })
   role!: string;
 
-  @Column({ default: true })
+  @Column({ type: "boolean", default: true })
   isActive!: boolean;
 
-  @CreateDateColumn()
+  @CreateDateColumn({ type: "timestamp" })
   createdAt!: Date;
 
-  @UpdateDateColumn()
+  @UpdateDateColumn({ type: "timestamp" })
   updatedAt!: Date;
 }
