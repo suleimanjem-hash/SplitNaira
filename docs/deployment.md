@@ -57,6 +57,7 @@ rustup target add wasm32v1-none
 ## 2. Environment Variables Reference
 
 Copy `.env.example` to `.env` (or set these as secrets/config vars in your hosting platform) before deploying each service.
+See [docs/environments.md](./environments.md) for the full matrix and per-environment examples.
 
 ### Backend (`backend/.env.example`)
 
