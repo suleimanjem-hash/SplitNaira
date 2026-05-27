@@ -82,7 +82,7 @@ beforeAll(() => {
   process.env.HORIZON_URL = "https://horizon.test";
   process.env.SOROBAN_RPC_URL = "https://soroban.test";
   process.env.SOROBAN_NETWORK_PASSPHRASE = "Test SDF Network";
-  process.env.CONTRACT_ID = "TESTCONTRACT";
+  process.env.CONTRACT_ID = "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA";
   process.env.SIMULATOR_ACCOUNT = "GTESTSIMULATOR";
   process.env.DATABASE_URL = "https://example.com/postgres";
 });
@@ -122,7 +122,7 @@ describe("splits routes integration", () => {
     expect(response.body).toMatchObject({
       xdr: "XDR_CREATE",
       metadata: {
-        contractId: "TESTCONTRACT",
+        contractId: "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
         networkPassphrase: "Test SDF Network",
         sourceAccount: "GOWNER",
         operation: "create_project",
@@ -280,7 +280,7 @@ describe("splits routes integration", () => {
     expect(response.body).toMatchObject({
       xdr: "XDR_ALLOW_TOKEN",
       metadata: {
-        contractId: "TESTCONTRACT",
+        contractId: "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
         networkPassphrase: "Test SDF Network",
         sourceAccount: "GADMIN",
         operation: "allow_token",
@@ -308,7 +308,7 @@ describe("splits routes integration", () => {
     expect(response.body).toMatchObject({
       xdr: "XDR_DISALLOW_TOKEN",
       metadata: {
-        contractId: "TESTCONTRACT",
+        contractId: "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
         networkPassphrase: "Test SDF Network",
         sourceAccount: "GADMIN",
         operation: "disallow_token",

@@ -751,8 +751,7 @@ export function SplitApp() {
   const onFetchProjectsList = useCallback(async (loadMore = false) => {
     if (isLoadingProjectsList) return;
     if (!loadMore && projectsList.length > 0) return;
-    
-  const onFetchProjectsList = useCallback(async () => {
+
     setIsLoadingProjectsList(true);
     setProjectsListError(null);
     try {
@@ -771,15 +770,8 @@ export function SplitApp() {
       setHasMoreProjects(projects.length === PROJECTS_LIMIT);
       
       if (projects.length === 0 && !loadMore) {
-      const projects: SplitProject[] = [];
-      for (const id of SEEDED_PROJECT_IDS) {
-        try {
-          const project = await getSplit(id);
-          projects.push(project);
-        } catch (e) {}
+        notify.info("No projects found.");
       }
-      setProjectsList(projects);
-      if (projects.length === 0) notify.info("No projects found.");
     } catch (error) {
       setProjectsListError("Failed to fetch projects list.");
     } finally {
@@ -787,8 +779,6 @@ export function SplitApp() {
       setProjectsListLoaded(true);
     }
   }, [isLoadingProjectsList, projectsList.length, projectsStart, listProjects]);
-  }, [projectsList.length]);
-  }, []);
 
   const onFetchDashboardData = useCallback(async () => {
     setIsLoadingDashboard(true);
@@ -926,19 +916,16 @@ export function SplitApp() {
         void onFetchProjectsList();
       }
     } else if (activeTab === "dashboard" && dashboardData.length === 0 && !isLoadingDashboard) {
-    if (activeTab === "projects" && !projectsListLoaded && !isLoadingProjectsList) {
-    if (activeTab === "projects" && !projectsListLoaded && !isLoadingProjectsList)
-      void onFetchProjectsList();
-    if (activeTab === "dashboard" && !dashboardListLoaded && !isLoadingDashboard)
       void onFetchDashboardData();
+    }
   }, [
     activeTab,
-    dashboardListLoaded,
+    dashboardData.length,
     isLoadingDashboard,
     isLoadingProjectsList,
     onFetchDashboardData,
     onFetchProjectsList,
-    projectsListLoaded,
+    projectsList.length,
   ]);
 
   useEffect(() => {
@@ -1033,7 +1020,7 @@ export function SplitApp() {
         </nav>
 
         {/* Content Tabs */}
-        {activeTab === "dashboard" && (
+        {activeTab === "dashboard" ? (
           <div className="space-y-10 animate-in fade-in duration-700">
             <div className="grid gap-6 md:grid-cols-3">
               {isLoadingDashboard ? (
@@ -1191,7 +1178,7 @@ export function SplitApp() {
                             <p className="font-mono text-[10px] text-muted break-all opacity-80">
                               Tx: {lastAllowlistTx.txHash}
                             </p>
-                            
+                            <a
                               href={`https://stellar.expert/explorer/testnet/tx/${lastAllowlistTx.txHash}`}
                               target="_blank"
                               rel="noopener noreferrer"
@@ -1374,7 +1361,7 @@ export function SplitApp() {
                     <div className="rounded-2xl border border-greenBright/20 bg-greenBright/5 p-5">
                       <p className="text-[10px] font-bold uppercase tracking-widest text-greenBright mb-2">Recovery Submitted</p>
                       <p className="font-mono text-[11px] text-muted break-all">Tx: {lastRecoveryTxHash}</p>
-                      
+                      <a
                         href={`https://stellar.expert/explorer/testnet/tx/${lastRecoveryTxHash}`}
                         target="_blank"
                         rel="noopener noreferrer"
@@ -1458,7 +1445,7 @@ export function SplitApp() {
                   <div className="mt-6 rounded-2xl border border-greenBright/20 bg-greenBright/5 p-5">
                     <p className="text-[10px] font-bold uppercase tracking-widest text-greenBright mb-2">Transaction Submitted</p>
                     <p className="font-mono text-[11px] text-muted break-all">Tx: {lastPauseTxHash}</p>
-                    
+                    <a
                       href={`https://stellar.expert/explorer/testnet/tx/${lastPauseTxHash}`}
                       target="_blank"
                       rel="noopener noreferrer"
@@ -2040,7 +2027,7 @@ export function SplitApp() {
                             <p className="text-[10px] text-muted">
                               <span className="text-ink">{Number(item.amount).toLocaleString()}</span> Stroops
                             </p>
-                            
+                            <a
                               href={getExplorerUrl(item.txHash, wallet.network)}
                               target="_blank"
                               className="text-[9px] font-bold text-greenBright/40 hover:text-greenBright uppercase"
@@ -2095,7 +2082,7 @@ export function SplitApp() {
                 <div className="glass-card rounded-[2.5rem] p-8 md:p-10">
                   <h2 className="font-display text-2xl tracking-tight mb-2">Available Projects</h2>
                   <button
-                    onClick={onFetchProjectsList}
+                    onClick={() => void onFetchProjectsList()}
                     disabled={isLoadingProjectsList}
                     className="premium-button rounded-2xl bg-greenMid px-8 py-4 text-xs font-bold uppercase tracking-widest text-white disabled:opacity-20"
                   >
@@ -2237,7 +2224,7 @@ export function SplitApp() {
                                     <>To: <span className="text-ink font-mono">{item.recipient?.slice(0, 8) ?? "Unknown"}...</span> Amount: <span className="text-ink">{Number(item.amount).toLocaleString()}</span></>
                                   )}
                                 </p>
-                                
+                                <a
                                   href={getExplorerUrl(item.txHash, wallet.network)}
                                   target="_blank"
                                   rel="noopener noreferrer"
@@ -2618,6 +2605,3 @@ export function SplitApp() {
   );
 }
 
-function SummaryCardSkeleton() {
-  return <div className="h-32 w-full animate-pulse rounded-3xl bg-white/5" />;
-}

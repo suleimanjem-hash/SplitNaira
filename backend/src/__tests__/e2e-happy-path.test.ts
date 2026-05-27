@@ -112,7 +112,7 @@ vi.mock("../services/stellar.js", () => {
       horizonUrl: "http://horizon.test",
       sorobanRpcUrl: "http://rpc.test",
       networkPassphrase: "Test SDF Network",
-      contractId: "CTEST000000000000000000000000000000000000000000000000TEST",
+      contractId: "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
       simulatorAccount: "GSIMULATOR"
     }),
     getStellarRpcServer: () => serverMock,
@@ -169,7 +169,7 @@ describe("E2E happy path: create → deposit → distribute → history", () => 
     process.env.HORIZON_URL = "https://horizon.test";
     process.env.SOROBAN_RPC_URL = "https://soroban.test";
     process.env.SOROBAN_NETWORK_PASSPHRASE = "Test SDF Network";
-    process.env.CONTRACT_ID = "CTEST000000000000000000000000000000000000000000000000TEST";
+    process.env.CONTRACT_ID = "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA";
     process.env.SIMULATOR_ACCOUNT = "GSIMULATOR";
   });
 

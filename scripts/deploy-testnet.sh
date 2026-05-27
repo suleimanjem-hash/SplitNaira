@@ -19,7 +19,7 @@ SCRIPTS_DIR="scripts"
 NETWORK="testnet"
 NETWORK_PASSPHRASE="Test SDF Network ; September 2015"
 RPC_URL="https://soroban-testnet.stellar.org"
-WASM_PATH="$CONTRACTS_DIR/target/wasm32v1-none/release/splitnaira_contracts.wasm"
+WASM_PATH="$CONTRACTS_DIR/target/wasm32v1-none/release/splitnaira_contract.wasm"
 
 # ── helpers ──────────────────────────────────────────────────────────────────
 
@@ -88,6 +88,9 @@ CONTRACT_ID=$(echo "$CONTRACT_ID" | tr -d '[:space:]')
 
 [ -n "$CONTRACT_ID" ] || die "Deployment did not return a contract ID."
 log "Deployed! Contract ID: $CONTRACT_ID"
+if [ -n "${GITHUB_OUTPUT:-}" ]; then
+  echo "contract_id=$CONTRACT_ID" >> "$GITHUB_OUTPUT"
+fi
 
 # ── write artifacts ───────────────────────────────────────────────────────────
 
@@ -123,6 +126,19 @@ export const CONTRACT_ID = '$CONTRACT_ID';
 export const NETWORK = '$NETWORK';
 EOF
 log "Frontend config → frontend/src/config/contract.ts"
+
+cat > "$CONTRACTS_DIR/deployments.json" <<EOF
+{
+  "testnet": {
+    "contractId": "$CONTRACT_ID",
+    "networkPassphrase": "$NETWORK_PASSPHRASE",
+    "rpcUrl": "$RPC_URL",
+    "wasmHash": "$WASM_HASH",
+    "deployedAt": "$(date -Iseconds)"
+  }
+}
+EOF
+log "Deployment registry -> contracts/deployments.json"
 
 log ""
 log "Done. SplitNaira contract live on testnet."

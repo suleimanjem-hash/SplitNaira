@@ -22,7 +22,8 @@ import {
   invalidateCache,
   invalidateCacheByPrefix,
   getCacheStats,
-  READ_CACHE_TTL_MS
+  READ_CACHE_TTL_MS,
+  type UnsignedTxResponse
 } from "../services/stellar.js";
 
 import { 
@@ -243,6 +244,54 @@ export function buildAdminTokenContractArgs(input: AdminTokenRequest): xdr.ScVal
   const adminAddress = Address.fromString(input.admin);
   const tokenAddress = Address.fromString(input.token);
   return [adminAddress.toScVal(), tokenAddress.toScVal()];
+}
+
+function parseStellarAddress(address: string, label: string): Address {
+  try {
+    return Address.fromString(address);
+  } catch {
+    throw new RequestValidationError(`${label} must be a valid Stellar address`);
+  }
+}
+
+async function buildUnsignedContractCall(input: {
+  sourceAddress: string;
+  sourceRoleLabel: string;
+  operation: string;
+  args: xdr.ScVal[];
+}): Promise<UnsignedTxResponse> {
+  const config = loadStellarConfig();
+  const server = getStellarRpcServer();
+
+  let sourceAccount;
+  try {
+    sourceAccount = await executeWithRetry(() => server.getAccount(input.sourceAddress));
+  } catch {
+    throw new RequestValidationError(`${input.sourceRoleLabel} account not found on selected network`);
+  }
+
+  const contract = new Contract(config.contractId);
+  const tx = new TransactionBuilder(sourceAccount, {
+    fee: BASE_FEE,
+    networkPassphrase: config.networkPassphrase
+  })
+    .addOperation(contract.call(input.operation, ...input.args))
+    .setTimeout(300)
+    .build();
+
+  const preparedTx = await executeWithRetry(() => server.prepareTransaction(tx));
+
+  return {
+    xdr: preparedTx.toXDR(),
+    metadata: {
+      contractId: config.contractId,
+      networkPassphrase: config.networkPassphrase,
+      sourceAccount: input.sourceAddress,
+      sequenceNumber: preparedTx.sequence,
+      fee: preparedTx.fee,
+      operation: input.operation
+    }
+  };
 }
 
 export function buildHistoryTopicFilters(projectId: string) {
@@ -638,11 +687,6 @@ export const listProjectsSchema = z.object({
   limit: z.coerce.number().int().min(1).max(100).default(10)
 });
 
-const adminTokenSchema = z.object({
-  admin: stellarAddressSchema.describe("admin"),
-  token: stellarAddressSchema.describe("token")
-});
-
 splitsRouter.get("/", async (req: Request, res: Response, next: NextFunction) => {
   try {
     const parsed = listProjectsSchema.safeParse(req.query);
@@ -945,7 +989,6 @@ export const distributeSchema = z.object({
 
 splitsRouter.post("/:projectId/distribute", async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const requestId = res.locals.requestId;
     const parsedId = projectIdParamSchema.safeParse(req.params.projectId);
     if (!parsedId.success) {
       throw new AppError(
@@ -970,25 +1013,8 @@ splitsRouter.post("/:projectId/distribute", async (req: Request, res: Response, 
     }
 
     const config = loadStellarConfig();
-    const server = getStellarRpcServer();
-
-    let sourceAccount;
-    const sourceAddress = parsed.data?.sourceAddress || config.simulatorAccount;
-    try {
-      sourceAccount = await server.getAccount(sourceAddress);
-    } catch {
-      throw new AppError(
-        ErrorType.ACCOUNT_STATE,
-        ErrorCode.ACCOUNT_NOT_FOUND,
-        "Source account not found on selected network",
-        { message: "The account used to trigger distribution must exist and be funded.", action: "Check Source Wallet" }
-      );
-    const server = new rpc.Server(config.sorobanRpcUrl, { allowHttp: true });
-
-    let sourceAccount;
-    const sourceAddress = parsed.data?.sourceAddress || config.simulatorAccount;
-
     const sourceAddress = parsedBody.data.sourceAddress || config.simulatorAccount;
+
     try {
       const result = await buildUnsignedContractCall({
         sourceAddress,
@@ -996,41 +1022,22 @@ splitsRouter.post("/:projectId/distribute", async (req: Request, res: Response, 
         operation: "distribute",
         args: [nativeToScVal(projectId, { type: "symbol" })]
       });
-    }
 
-    let preparedTx;
-    try {
-      const contract = new Contract(config.contractId);
-      const tx = new TransactionBuilder(sourceAccount, {
-        fee: BASE_FEE,
-        networkPassphrase: config.networkPassphrase
-      })
-        .addOperation(
-          contract.call("distribute", nativeToScVal(projectId, { type: "symbol" }))
-        )
-        .setTimeout(300)
-        .build();
+      // Evict cached project data; distribution round and balance will change
+      invalidateCache(`project:${projectId}`);
+      invalidateCacheByPrefix("list_projects:");
 
-      preparedTx = await executeWithRetry(() => server.prepareTransaction(tx));
+      return res.status(200).json(result);
     } catch (error) {
-      throw translateSorobanError(error);
-    }
-
-    // Evict cached project data; distribution round and balance will change
-    invalidateCache(`project:${projectId}`);
-    invalidateCacheByPrefix("list_projects:");
-
-    return res.status(200).json({
-      xdr: preparedTx.toXDR(),
-      metadata: {
-        contractId: config.contractId,
-        networkPassphrase: config.networkPassphrase,
-        sourceAccount: sourceAddress,
-        sequenceNumber: preparedTx.sequence,
-        fee: preparedTx.fee,
-        operation: "distribute"
+      if (error instanceof RequestValidationError) {
+        throw new AppError(
+          ErrorType.ACCOUNT_STATE,
+          ErrorCode.ACCOUNT_NOT_FOUND,
+          error.message,
+          { message: "The account used to trigger distribution must exist and be funded.", action: "Check Source Wallet" }
+        );
       }
-      throw error;
+      throw translateSorobanError(error);
     }
   } catch (error) {
     return next(error);

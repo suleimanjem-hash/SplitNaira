@@ -8,6 +8,37 @@ import { logger } from "./logger.js";
 let AppDataSource: DataSource | null = null;
 let initializationPromise: Promise<DataSource> | null = null;
 
+export function createDataSource(): DataSource {
+  const env = getEnv();
+  const databaseUrl = env.DATABASE_URL;
+
+  if (!databaseUrl) {
+    throw new Error("DATABASE_URL is required for database initialization.");
+  }
+
+  const databaseHost = new URL(databaseUrl).hostname;
+  const needsSsl =
+    databaseHost !== "localhost" &&
+    databaseHost !== "127.0.0.1" &&
+    !databaseUrl.includes("sslmode=") &&
+    !databaseUrl.includes("ssl=");
+
+  return new DataSource({
+    type: "postgres",
+    url: databaseUrl,
+    synchronize: false,
+    logging: process.env.NODE_ENV === "development",
+    entities: [User, TransactionRecord],
+    migrations: ["src/migrations/*.ts"],
+    migrationsTableName: "migrations",
+    ssl: needsSsl
+      ? {
+          rejectUnauthorized: false
+        }
+      : false
+  });
+}
+
 export async function initDatabase(): Promise<DataSource> {
   if (AppDataSource?.isInitialized) {
     return AppDataSource;
@@ -18,33 +49,7 @@ export async function initDatabase(): Promise<DataSource> {
   }
 
   initializationPromise = (async () => {
-    const env = getEnv();
-    const databaseUrl = env.DATABASE_URL;
-
-    if (!databaseUrl) {
-      throw new Error("DATABASE_URL is required for database initialization.");
-    }
-
-    const needsSsl =
-      new URL(databaseUrl).hostname !== "localhost" &&
-      new URL(databaseUrl).hostname !== "127.0.0.1" &&
-      !databaseUrl.includes("sslmode=") &&
-      !databaseUrl.includes("ssl=");
-
-    AppDataSource = new DataSource({
-      type: "postgres",
-      url: databaseUrl,
-      synchronize: process.env.NODE_ENV !== "production",
-      logging: process.env.NODE_ENV === "development",
-      entities: [User, TransactionRecord],
-      migrations: ["src/migrations/*.ts"],
-      migrationsTableName: "migrations",
-      ssl: needsSsl
-        ? {
-            rejectUnauthorized: false
-          }
-        : false
-    });
+    AppDataSource = createDataSource();
 
     try {
       await AppDataSource.initialize();

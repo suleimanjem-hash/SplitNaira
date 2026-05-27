@@ -8,7 +8,7 @@ const VALID_ENV: Record<string, string> = {
   NEXT_PUBLIC_SOROBAN_RPC_URL: "https://soroban-testnet.stellar.org",
   NEXT_PUBLIC_HORIZON_URL: "https://horizon-testnet.stellar.org",
   NEXT_PUBLIC_API_BASE_URL: "http://localhost:3001",
-  NEXT_PUBLIC_CONTRACT_ID: "CABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890ABCD"
+  NEXT_PUBLIC_CONTRACT_ID: "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
 };
 
 const ENV_KEYS = Object.keys(VALID_ENV);
@@ -124,6 +124,26 @@ describe("validateEnv()", () => {
 
     expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining("NEXT_PUBLIC_CONTRACT_ID"));
     warnSpy.mockRestore();
+  });
+
+  it("throws when CONTRACT_ID is absent during a production build", async () => {
+    vi.resetModules();
+    const savedNodeEnv = process.env.NODE_ENV;
+    const savedNextPhase = process.env.NEXT_PHASE;
+    const { NEXT_PUBLIC_CONTRACT_ID: _omit, ...rest } = VALID_ENV;
+    Object.assign(process.env, rest, { NODE_ENV: "production", NEXT_PHASE: "phase-production-build" });
+    delete process.env.NEXT_PUBLIC_CONTRACT_ID;
+
+    try {
+      const mod = await import("./env");
+      expect(() => mod.validateEnv()).toThrowError(/NEXT_PUBLIC_CONTRACT_ID/);
+    } finally {
+      vi.resetModules();
+      if (savedNodeEnv === undefined) delete process.env.NODE_ENV;
+      else process.env.NODE_ENV = savedNodeEnv;
+      if (savedNextPhase === undefined) delete process.env.NEXT_PHASE;
+      else process.env.NEXT_PHASE = savedNextPhase;
+    }
   });
 
   it("does not warn when CONTRACT_ID is provided", () => {

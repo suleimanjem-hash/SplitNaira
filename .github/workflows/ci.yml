@@ -26,9 +26,30 @@ jobs:
 
   backend:
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: splitnaira
+          POSTGRES_PASSWORD: splitnaira
+          POSTGRES_DB: splitnaira_ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U splitnaira -d splitnaira_ci"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
     env:
       CI: true
+      NEXT_PUBLIC_CONTRACT_ID: CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
       NODE_ENV: test
+      DATABASE_URL: postgresql://splitnaira:splitnaira@localhost:5432/splitnaira_ci
+      HORIZON_URL: https://horizon-testnet.stellar.org
+      SOROBAN_RPC_URL: https://soroban-testnet.stellar.org
+      SOROBAN_NETWORK_PASSPHRASE: Test SDF Network ; September 2015
+      CONTRACT_ID: CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+      SIMULATOR_ACCOUNT: GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v6
@@ -37,6 +58,7 @@ jobs:
           cache: npm
       - run: npm ci --no-audit --no-fund
       - run: npm run deps:check -w backend
+      - run: npm run migration:run -w backend
       - run: npm run lint -w backend
       - run: npm run build -w backend
       - run: npm run test:compat -w backend -- --reporter=verbose

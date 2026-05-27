@@ -1,6 +1,7 @@
 import { beforeAll, describe, expect, it, vi } from "vitest";
 import request from "supertest";
 import { app } from "../index.js";
+import { checkSorobanReachability } from "../services/stellar.js";
 
 vi.mock("@stellar/stellar-sdk", () => {
   return {
@@ -48,7 +49,7 @@ vi.mock("@stellar/stellar-sdk", () => {
 });
 
 vi.mock("../services/stellar.js", async (importOriginal) => {
-  const actual = await importOriginal();
+  const actual = await importOriginal<typeof import("../services/stellar.js")>();
   return {
     ...actual,
     loadStellarConfig: vi.fn(() => ({
@@ -79,6 +80,10 @@ vi.mock("../services/stellar.js", async (importOriginal) => {
     invalidateCacheByPrefix: vi.fn(),
     getCacheStats: vi.fn(() => ({ hits: 0, misses: 0, evictions: 0 })),
     READ_CACHE_TTL_MS: 30000,
+    checkSorobanReachability: vi.fn().mockResolvedValue({
+      rpc: { ok: true },
+      contract: { ok: true }
+    }),
   };
 });
 
@@ -152,6 +157,32 @@ describe("Route Integration Tests", () => {
         process.env.SIMULATOR_ACCOUNT = originalSimulatorAccount;
         process.env.CONTRACT_ID = originalContractId;
       }
+    });
+
+    it("should return 503 when Soroban RPC is unavailable", async () => {
+      vi.mocked(checkSorobanReachability).mockResolvedValueOnce({
+        rpc: { ok: false, message: "RPC timeout" },
+        contract: { ok: false, message: "Skipped because Soroban RPC is unreachable" }
+      });
+
+      const res = await request(app).get("/health/ready");
+
+      expect(res.status).toBe(503);
+      expect(res.body.error).toBe("rpc_unavailable");
+      expect(res.body.components.rpc.ok).toBe(false);
+    });
+
+    it("should return 503 when contract simulation fails", async () => {
+      vi.mocked(checkSorobanReachability).mockResolvedValueOnce({
+        rpc: { ok: true },
+        contract: { ok: false, message: "contract not found" }
+      });
+
+      const res = await request(app).get("/health/ready");
+
+      expect(res.status).toBe(503);
+      expect(res.body.error).toBe("contract_unreachable");
+      expect(res.body.components.contract.ok).toBe(false);
     });
   });
 

@@ -1,5 +1,19 @@
 import { z } from "zod";
 
+const isProductionBuild =
+  process.env.NODE_ENV === "production" || process.env.NEXT_PHASE === "phase-production-build";
+
+const contractIdSchema = isProductionBuild
+  ? z
+      .string()
+      .min(1, "NEXT_PUBLIC_CONTRACT_ID is required for production builds")
+      .regex(/^C[A-Z2-7]{55}$/, "NEXT_PUBLIC_CONTRACT_ID must be a valid Stellar contract address")
+  : z
+      .string()
+      .regex(/^C[A-Z2-7]{55}$/, "NEXT_PUBLIC_CONTRACT_ID must be a valid Stellar contract address")
+      .optional()
+      .default("");
+
 /**
  * Schema for all NEXT_PUBLIC_* environment variables consumed by the frontend.
  * Every field has a sensible default so development works out-of-the-box after
@@ -52,7 +66,7 @@ const frontendEnvSchema = z.object({
    * missing value is surfaced by printEnvDiagnostics() so contributors know to
    * fill it in before attempting on-chain operations.
    */
-  NEXT_PUBLIC_CONTRACT_ID: z.string().optional().default("")
+  NEXT_PUBLIC_CONTRACT_ID: contractIdSchema
 });
 
 export type FrontendEnv = z.infer<typeof frontendEnvSchema>;

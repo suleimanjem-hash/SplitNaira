@@ -1,0 +1,9 @@
+{
+  "testnet": {
+    "contractId": "",
+    "networkPassphrase": "Test SDF Network ; September 2015",
+    "rpcUrl": "https://soroban-testnet.stellar.org",
+    "wasmHash": "",
+    "deployedAt": ""
+  }
+}

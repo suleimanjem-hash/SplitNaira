@@ -3,6 +3,7 @@ import {
   BASE_FEE,
   Contract,
   TransactionBuilder,
+  nativeToScVal,
   rpc,
   xdr
 } from "@stellar/stellar-sdk";
@@ -197,4 +198,69 @@ export function invalidateCacheByPrefix(prefix: string): void {
 
 export function getCacheStats(): { size: number; keys: string[] } {
   return { size: _cache.size, keys: Array.from(_cache.keys()) };
+}
+
+export interface SorobanReachabilityStatus {
+  rpc: {
+    ok: boolean;
+    message?: string;
+  };
+  contract: {
+    ok: boolean;
+    message?: string;
+  };
+}
+
+export async function checkSorobanReachability(): Promise<SorobanReachabilityStatus> {
+  const config = loadStellarConfig();
+  const server = getStellarRpcServer();
+
+  let sourceAccount;
+  try {
+    sourceAccount = await executeWithRetry(() => server.getAccount(config.simulatorAccount), {
+      maxRetries: 1,
+      timeoutMs: 5_000
+    });
+  } catch (error) {
+    return {
+      rpc: {
+        ok: false,
+        message: error instanceof Error ? error.message : "Soroban RPC account lookup failed"
+      },
+      contract: {
+        ok: false,
+        message: "Skipped because Soroban RPC is unreachable"
+      }
+    };
+  }
+
+  try {
+    Address.fromString(config.contractId);
+    const contract = new Contract(config.contractId);
+    const tx = new TransactionBuilder(sourceAccount, {
+      fee: BASE_FEE,
+      networkPassphrase: config.networkPassphrase
+    })
+      .addOperation(contract.call("project_exists", nativeToScVal("__healthcheck__", { type: "symbol" })))
+      .setTimeout(30)
+      .build();
+
+    await executeWithRetry(() => server.simulateTransaction(tx), {
+      maxRetries: 1,
+      timeoutMs: 5_000
+    });
+  } catch (error) {
+    return {
+      rpc: { ok: true },
+      contract: {
+        ok: false,
+        message: error instanceof Error ? error.message : "Contract simulation failed"
+      }
+    };
+  }
+
+  return {
+    rpc: { ok: true },
+    contract: { ok: true }
+  };
 }

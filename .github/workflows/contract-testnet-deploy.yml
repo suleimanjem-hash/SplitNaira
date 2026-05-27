@@ -1,0 +1,59 @@
+name: Contract Testnet Deploy
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "contracts/**"
+      - "scripts/deploy-testnet.sh"
+      - ".github/workflows/contract-testnet-deploy.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: contract-testnet-deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy-testnet:
+    runs-on: ubuntu-latest
+    if: github.actor != 'github-actions[bot]'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32v1-none
+
+      - name: Install Stellar CLI
+        run: cargo install --locked stellar-cli
+
+      - name: Deploy contract to testnet
+        id: deploy
+        env:
+          STELLAR_SECRET_KEY: ${{ secrets.STELLAR_SECRET_KEY }}
+        run: |
+          if [ -z "$STELLAR_SECRET_KEY" ]; then
+            echo "Missing required secret: STELLAR_SECRET_KEY"
+            exit 1
+          fi
+          chmod +x scripts/deploy-testnet.sh
+          ./scripts/deploy-testnet.sh "$STELLAR_SECRET_KEY"
+
+      - name: Commit deployment config
+        env:
+          CONTRACT_ID: ${{ steps.deploy.outputs.contract_id }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add contracts/deployments.json backend/src/config/contract.json frontend/src/config/contract.ts
+          if git diff --cached --quiet; then
+            echo "No deployment config changes to commit."
+            exit 0
+          fi
+          git commit -m "chore(deploy): update testnet contract id [skip ci]"
+          git push
