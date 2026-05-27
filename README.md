@@ -107,8 +107,11 @@ splitNaira/
 
 ## Documentation
 
+- [Deployment Runbook](./docs/deployment.md)
 - [Contributing Guide](./CONTRIBUTING.md)
 - [Contract Setup](./docs/SOROBAN_SETUP.md)
+- [Contract Release & Upgrade](./docs/contract-release-and-upgrade-runbook.md)
+- [Backend CD](./docs/backend-deploy.md)
 - [API Docs](./docs/openapi.json)
 
 ## License
