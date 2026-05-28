@@ -8,7 +8,7 @@ import {
   xdr
 } from "@stellar/stellar-sdk";
 import { getEnv } from "../config/env.js";
-
+import { logger } from "./logger.js";
 import { AppError, ErrorCode, ErrorType } from "../lib/errors.js";
 
 export interface StellarConfig {
@@ -80,7 +80,7 @@ export async function executeWithRetry<T>(
 
       if (attempt < maxRetries) {
         const delay = initialDelayMs * Math.pow(2, attempt);
-        console.warn(`[rpc] Attempt ${attempt + 1} failed, retrying in ${delay}ms...`, error);
+        logger.warn("RPC retry", { attempt: attempt + 1, delay, error });
         await new Promise((resolve) => setTimeout(resolve, delay));
       }
     }

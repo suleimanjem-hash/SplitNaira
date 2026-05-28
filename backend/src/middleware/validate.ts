@@ -31,13 +31,12 @@ export function validateRequest(schemas: ValidationSchemas): RequestHandler {
     } catch (error) {
       if (error instanceof z.ZodError) {
         const requestId = res.locals.requestId;
-        res.status().json({
-        error: ,
-        message: ,
-        requestId,
-        details: 
-      });
-        return;
+        return res.status(400).json({
+          error: "VALIDATION_ERROR",
+          message: "Invalid request payload",
+          requestId,
+          details: buildValidationDetails(error)
+        });
       }
       next(error);
     }

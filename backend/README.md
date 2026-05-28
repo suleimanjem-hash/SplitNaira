@@ -27,6 +27,24 @@ The API documentation is defined using Zod schemas and generated into an OpenAPI
 ## Deployment
 - CI/CD workflow: `../.github/workflows/backend-deploy.yml`
 - Deployment configuration and required secrets: [`../docs/backend-deploy.md`](../docs/backend-deploy.md)
+- **Compliance & Operational Readiness**: [`../docs/backend-compliance-improvements.md`](../docs/backend-compliance-improvements.md) - Production-grade improvements including transaction safety, logging, and deployment guidance.
+
+## Compliance & Production Readiness
+
+This backend implements production-grade compliance standards:
+
+- ✅ **Database Transaction Safety** - User registration and critical operations wrapped in transactions with automatic rollback
+- ✅ **Structured Logging** - All logs use logger service with request IDs for tracing
+- ✅ **Input Validation** - Request validation middleware with detailed error messages
+- ✅ **Error Handling** - Comprehensive error handling with appropriate HTTP status codes
+- ✅ **Rate Limiting** - 5-tier layered rate limiting on all endpoints
+- ✅ **Security** - Stellar address verification, helmet security headers, CORS configuration
+
+See [`../docs/backend-compliance-improvements.md`](../docs/backend-compliance-improvements.md) for:
+- Implementation details of critical fixes
+- Deployment safety procedures
+- Rollback procedures
+- Operational impact and monitoring guidance
 
 ## Structure
 - `src/index.ts` - App entry

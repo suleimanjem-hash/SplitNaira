@@ -22,6 +22,7 @@
 
 import { readFile, writeFile, mkdir } from "node:fs/promises";
 import { dirname } from "node:path";
+import { logger } from "./logger.js";
 
 export interface PayoutRecord {
   id: string;
@@ -197,7 +198,7 @@ export function createPayoutHistoryService(config?: Partial<PayoutIndexConfig>):
 
     async backfill(fromRound) {
       // Placeholder: integrate with Stellar event indexer.
-      console.log(`Backfilling from round ${fromRound ?? 0}`);
+      logger.info(`Backfilling from round ${fromRound ?? 0}`);
     },
 
     destroy() {

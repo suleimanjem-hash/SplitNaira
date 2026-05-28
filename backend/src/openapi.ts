@@ -10,6 +10,7 @@ import * as yaml from "yaml";
 import * as fs from "fs";
 import * as path from "path";
 import { fileURLToPath } from "url";
+import { logger } from "./services/logger.js";
 
 import {
   createSplitSchema,
@@ -460,7 +461,7 @@ export function generateOpenApi() {
 // Check if this file is being run directly
 const __filename = fileURLToPath(import.meta.url);
 const isDirectRun = process.argv[1] && (
-  process.argv[1].endsWith("openapi.ts") || 
+  process.argv[1].endsWith("openapi.ts") ||
   process.argv[1].endsWith("openapi.js") ||
   process.argv[1] === __filename
 );
@@ -475,5 +476,5 @@ if (isDirectRun) {
     path.join(docsDir, "openapi.yaml"),
     yaml.stringify(spec)
   );
-  console.log("OpenAPI spec generated at openapi/openapi.yaml");
+  logger.info("OpenAPI spec generated at docs/openapi.yaml");
 }
