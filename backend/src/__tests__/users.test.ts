@@ -8,6 +8,9 @@ import { requestIdMiddleware } from "../middleware/request-id.js";
 const findOneMock = vi.fn();
 const createMock = vi.fn();
 const saveMock = vi.fn();
+const commitMock = vi.fn();
+const rollbackMock = vi.fn();
+const releaseMock = vi.fn();
 
 vi.mock("../services/database.js", () => ({
   getDataSource: () => ({
@@ -16,7 +19,23 @@ vi.mock("../services/database.js", () => ({
       create: createMock,
       save: saveMock
     })
-  })
+  }),
+  withTransaction: async (callback: any) => {
+    const mockQueryRunner = {
+      manager: {
+        getRepository: () => ({
+          findOne: findOneMock,
+          create: createMock,
+          save: saveMock
+        })
+      },
+      startTransaction: commitMock,
+      commitTransaction: commitMock,
+      rollbackTransaction: rollbackMock,
+      release: releaseMock
+    };
+    return await callback(mockQueryRunner);
+  }
 }));
 
 import { usersRouter } from "../routes/users.js";
@@ -164,6 +183,46 @@ describe("User Registration API", () => {
 
       const response = await request(app)
         .get("/users/INVALID");
+
+      expect(response.status).toBe(400);
+    });
+  });
+
+  describe("Transaction Safety", () => {
+    it("should rollback user registration on save failure", async () => {
+      findOneMock.mockResolvedValue(null);
+      saveMock.mockRejectedValue(new Error("Database constraint violation"));
+
+      const app = createApp();
+
+      const response = await request(app)
+        .post("/users/register")
+        .send({
+          walletAddress: "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF",
+          email: "test@example.com",
+          alias: "TestUser"
+        });
+
+      expect(response.status).toBe(500);
+      expect(rollbackMock).toHaveBeenCalled();
+    });
+
+    it("should rollback on duplicate wallet address error during transaction", async () => {
+      const app = createApp();
+
+      // First call returns null (user doesn't exist), second call would find it
+      findOneMock.mockResolvedValueOnce(null);
+      findOneMock.mockResolvedValueOnce({
+        id: "existing",
+        walletAddress: "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF"
+      });
+
+      const response = await request(app)
+        .post("/users/register")
+        .send({
+          walletAddress: "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF",
+          email: "test@example.com"
+        });
 
       expect(response.status).toBe(400);
     });

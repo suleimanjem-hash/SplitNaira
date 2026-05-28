@@ -1,5 +1,5 @@
 import { Router, Request, Response, NextFunction } from "express";
-import { getDataSource } from "../services/database.js";
+import { getDataSource, withTransaction } from "../services/database.js";
 import { User } from "../entities/User.js";
 import { userRegistrationSchema } from "../schemas/user.schemas.js";
 import { AppError, ErrorCode, ErrorType } from "../lib/errors.js";
@@ -10,6 +10,7 @@ export const usersRouter = Router();
 /**
  * POST /users/register
  * Register a new user with wallet address
+ * Transaction-safe: Automatically rolled back on error
  */
 usersRouter.post("/register", async (req: Request, res: Response, next: NextFunction) => {
   try {
@@ -29,35 +30,36 @@ usersRouter.post("/register", async (req: Request, res: Response, next: NextFunc
 
     const { walletAddress, email, alias } = parsed.data;
 
-    // Get database connection
-    const dataSource = getDataSource();
-    const userRepository = dataSource.getRepository(User);
+    // Execute user registration within transaction
+    const savedUser = await withTransaction(async (queryRunner) => {
+      const userRepository = queryRunner.manager.getRepository(User);
 
-    // Check if user already exists
-    const existingUser = await userRepository.findOne({
-      where: { walletAddress }
+      // Check if user already exists
+      const existingUser = await userRepository.findOne({
+        where: { walletAddress }
+      });
+
+      if (existingUser) {
+        throw new AppError(
+          ErrorType.VALIDATION,
+          ErrorCode.VALIDATION_ERROR,
+          "User with this wallet address already exists.",
+          { walletAddress }
+        );
+      }
+
+      // Create new user
+      const newUser = userRepository.create({
+        walletAddress,
+        email,
+        alias,
+        role: "user",
+        isActive: true
+      });
+
+      // Save to database within transaction
+      return await userRepository.save(newUser);
     });
-
-    if (existingUser) {
-      throw new AppError(
-        ErrorType.VALIDATION,
-        ErrorCode.VALIDATION_ERROR,
-        "User with this wallet address already exists.",
-        { walletAddress }
-      );
-    }
-
-    // Create new user
-    const newUser = userRepository.create({
-      walletAddress,
-      email,
-      alias,
-      role: "user",
-      isActive: true
-    });
-
-    // Save to database
-    const savedUser = await userRepository.save(newUser);
 
     logger.info("User registered successfully", {
       userId: savedUser.id,

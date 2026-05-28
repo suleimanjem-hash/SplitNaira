@@ -1,6 +1,6 @@
 import type { NextFunction, Request, Response } from "express";
 import { AppError, ErrorCode, ErrorType } from "../lib/errors.js";
-
+import { logger } from "../services/logger.js";
 import { RpcError } from "../services/stellar.js";
 
 export function notFoundHandler(_req: Request, res: Response) {
@@ -19,7 +19,7 @@ export function errorHandler(
   _next: NextFunction
 ) {
   const requestId = res.locals.requestId;
-  
+
   // Use property check instead of instanceof for better compatibility with different module instances/mocks
   const isAppError = err && typeof err === "object" && "type" in err && "code" in err;
 
@@ -31,9 +31,9 @@ export function errorHandler(
         : appError.type === ErrorType.VALIDATION || appError.type === ErrorType.AUTH
           ? 400
           : 500;
-    
+
     // Log structured error
-    console.error({
+    logger.error("Application error", {
       requestId,
       type: err.type,
       code: err.code,
@@ -50,7 +50,7 @@ export function errorHandler(
   }
 
   // Fallback for generic errors
-  console.error({ requestId, err: err.stack || err.message || err });
+  logger.error("Unhandled error", { requestId, err: err.stack || err.message || err });
 
   if (err instanceof RpcError) {
     return res.status(err.statusCode).json({

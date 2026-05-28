@@ -1,5 +1,6 @@
 import { ZodSchema, ZodError } from "zod";
 import { Request, Response, NextFunction } from "express";
+import { logger } from "../services/logger.js";
 
 export type RouteHandler = (
   req: Request,
@@ -27,9 +28,11 @@ export function withResponseValidation<T>(
 
       if (!result.success) {
         const formatted = formatZodError(result.error);
-        console.error(
-          `[validateResponse] Schema drift on ${req.method} ${req.path}:\n${formatted}`,
-        );
+        logger.error("Response schema validation failed", {
+          method: req.method,
+          path: req.path,
+          errors: formatted
+        });
 
         if (process.env.NODE_ENV !== "production") {
           return originalJson({
