@@ -85,7 +85,7 @@ export const stellarAddressSchema = z
     }
   });
 
-export const collaboratorSchema = CollaboratorSchema.extend({
+export const collaboratorSchema = CollaboratorSchema.omit({ basis_points: true }).extend({
   address: stellarAddressSchema,
   basisPoints: z
     .number()

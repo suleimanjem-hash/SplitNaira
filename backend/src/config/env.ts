@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { logger } from "../services/logger.js";
 
 const stellarContractIdSchema = z
   .string()
@@ -149,7 +150,7 @@ export function printEnvDiagnostics(): void {
     { key: "SIMULATOR_ACCOUNT", required: true }
   ];
 
-  console.log("[env] Environment diagnostics:");
+  logger.info("[env] Environment diagnostics:");
 
   for (const { key, required } of vars) {
     const raw = process.env[key];
@@ -165,7 +166,7 @@ export function printEnvDiagnostics(): void {
     }
 
     const display = present ? ` = ${truncate(raw)}` : "";
-    console.log(`  ${marker}  ${key}${display}`);
+    logger.info(`  ${marker}  ${key}${display}`);
   }
 }
 

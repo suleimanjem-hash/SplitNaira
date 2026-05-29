@@ -6,6 +6,7 @@ import {
   clearEnvCache,
   printEnvDiagnostics
 } from "./env.js";
+import { logger } from "../services/logger.js";
 
 // ─── Fixtures ─────────────────────────────────────────────────────────────────
 
@@ -205,7 +206,7 @@ describe("getEnvDiagnostics()", () => {
 
 describe("printEnvDiagnostics()", () => {
   it("logs to console without throwing", () => {
-    const spy = vi.spyOn(console, "log").mockImplementation(() => undefined);
+    const spy = vi.spyOn(logger, "info").mockImplementation(() => undefined as any);
     Object.assign(process.env, VALID_ENV);
 
     expect(() => printEnvDiagnostics()).not.toThrow();
@@ -217,8 +218,11 @@ describe("printEnvDiagnostics()", () => {
   it("marks missing required vars with a MISSING indicator", () => {
     const lines: string[] = [];
     const spy = vi
-      .spyOn(console, "log")
-      .mockImplementation((msg: string) => lines.push(msg));
+      .spyOn(logger, "info")
+      .mockImplementation((msg: string) => {
+        lines.push(msg);
+        return undefined as any;
+      });
 
     printEnvDiagnostics();
 

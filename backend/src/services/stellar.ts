@@ -9,7 +9,6 @@ import {
 import { getEnv } from "../config/env.js";
 import { logger } from "./logger.js";
 import { AppError, ErrorCode, ErrorType } from "../lib/errors.js";
-import { logger } from "./logger.js";
 import { configureReadCache, getReadCache } from "./read-cache.js";
 
 export interface StellarConfig {

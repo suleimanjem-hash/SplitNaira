@@ -1,7 +1,8 @@
 import { Router, Request, Response, NextFunction } from "express";
+import { z } from "zod";
 import { getDataSource, withTransaction } from "../services/database.js";
 import { User } from "../entities/User.js";
-import { userRegistrationSchema } from "../schemas/user.schemas.js";
+import { userRegistrationSchema, stellarAddressSchema } from "../schemas/user.schemas.js";
 import { AppError, ErrorCode, ErrorType } from "../lib/errors.js";
 import { logger } from "../services/logger.js";
 
@@ -78,6 +79,67 @@ usersRouter.post("/register", async (req: Request, res: Response, next: NextFunc
       isActive: savedUser.isActive,
       createdAt: savedUser.createdAt.toISOString(),
       updatedAt: savedUser.updatedAt.toISOString()
+    });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+/**
+ * POST /users/login
+ * Log in a user by wallet address
+ */
+usersRouter.post("/login", async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const requestId = res.locals.requestId;
+
+    const loginSchema = z.object({
+      walletAddress: stellarAddressSchema
+    });
+
+    // Validate request body
+    const parsed = loginSchema.safeParse(req.body);
+    if (!parsed.success) {
+      throw new AppError(
+        ErrorType.VALIDATION,
+        ErrorCode.VALIDATION_ERROR,
+        "Invalid request payload.",
+        undefined,
+        parsed.error.flatten()
+      );
+    }
+
+    const { walletAddress } = parsed.data;
+    const dataSource = getDataSource();
+    const userRepository = dataSource.getRepository(User);
+
+    const user = await userRepository.findOne({
+      where: { walletAddress }
+    });
+
+    if (!user) {
+      throw new AppError(
+        ErrorType.RPC,
+        ErrorCode.NOT_FOUND,
+        `User with wallet address ${walletAddress} not found.`
+      );
+    }
+
+    logger.info("User logged in successfully", {
+      userId: user.id,
+      walletAddress: user.walletAddress,
+      requestId
+    });
+
+    return res.status(200).json({
+      id: user.id,
+      walletAddress: user.walletAddress,
+      email: user.email,
+      alias: user.alias,
+      role: user.role,
+      isActive: user.isActive,
+      createdAt: user.createdAt.toISOString(),
+      updatedAt: user.updatedAt.toISOString()
     });
   } catch (error) {
     return next(error);
