@@ -137,6 +137,24 @@ Returns count of allowlisted token addresses.
 ### `get_admin() -> Option<Address>`
 Returns current admin.
 
+### `pause_distributions(admin: Address) -> Result<(), SplitError>`
+Pauses all `distribute` calls (emergency stop). Deposits and reads continue.
+- Auth: contract admin.
+- Errors: `AdminNotSet`, `Unauthorized`.
+
+### `unpause_distributions(admin: Address) -> Result<(), SplitError>`
+Resumes distributions after an admin pause.
+- Auth: contract admin.
+- Errors: `AdminNotSet`, `Unauthorized`.
+
+### `is_distributions_paused() -> bool`
+Returns whether distributions are currently paused.
+
+### `transfer_project_ownership(project_id, current_owner, new_owner) -> Result<(), SplitError>`
+Transfers project ownership to a new address while the project is unlocked.
+- Auth: `current_owner`.
+- Errors: `NotFound`, `Unauthorized`, `ProjectLocked`.
+
 ## Machine-Consumable Interface
 
 The generated interface artifact lives at:
@@ -213,6 +231,13 @@ Soroban event shape is `(topics, data)`. This contract uses `topics = (event_nam
   - Topics: `("unallocated_withdrawn", C...TOKEN)`
   - Data: `(G...ADMIN, G...TREASURY, 2000000000, 1000000000)`
 
+### `ownership_transferred`
+- Topics format: `("ownership_transferred", project_id)`
+- Data format: `(previous_owner, new_owner)`
+- Example:
+  - Topics: `("ownership_transferred", "afrobeats_vol3")`
+  - Data: `(G...PREVIOUS, G...NEW)`
+
 ## Error Codes
 
 - `1` `ProjectExists`
@@ -230,3 +255,4 @@ Soroban event shape is `(topics, data)`. This contract uses `topics = (event_nam
 - `13` `AdminNotSet`
 - `14` `ArithmeticOverflow`
 - `15` `InsufficientUnallocated`
+- `16` `DistributionsPaused`

@@ -2,7 +2,10 @@
 
 This checklist is the authoritative guide for contract release flow in SplitNaira.
 
+**Runbooks:** [docs/runbooks/README.md](./runbooks/README.md) — contracts (#436), CI/CD (#437), ops (#438), frontend (#439).
+
 - [x] `docs/contract-release-and-upgrade-runbook.md` exists and is up-to-date.
+- [x] `npm run verify:data-integrity` passes (interface JSON + generated types committed).
 - [x] `contracts/` unit tests pass (`cargo test`).
 - [x] `contracts/` formatter and linter checks pass.
 - [x] Release build file exists: `contracts/target/wasm32v1-none/release/splitnaira_contract.wasm`.

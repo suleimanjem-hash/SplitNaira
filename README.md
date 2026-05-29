@@ -108,11 +108,18 @@ splitNaira/
 ## Documentation
 
 - [Deployment Runbook](./docs/deployment.md)
+- [Operational Runbooks](./docs/runbooks/README.md) (contracts, CI/CD, ops, frontend)
 - [Contributing Guide](./CONTRIBUTING.md)
 - [Contract Setup](./docs/SOROBAN_SETUP.md)
 - [Contract Release & Upgrade](./docs/contract-release-and-upgrade-runbook.md)
 - [Backend CD](./docs/backend-deploy.md)
 - [API Docs](./docs/openapi.json)
+
+### Data integrity & release ops
+
+```bash
+npm run verify:data-integrity   # contract interface + generated types in sync
+```
 
 ## License
 

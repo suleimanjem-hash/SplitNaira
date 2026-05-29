@@ -18,6 +18,7 @@
     "test:contracts": "cd contracts && cargo test",
     "generate:contract-interface": "node contracts/scripts/generate-interface.mjs",
     "generate:contract-types": "node scripts/generate-contract-types.mjs",
+    "verify:data-integrity": "node scripts/verify-data-integrity.mjs",
     "lint": "npm run lint:frontend && npm run lint:backend",
     "lint:frontend": "cd frontend && npm run lint",
     "lint:backend": "cd backend && npm run lint",

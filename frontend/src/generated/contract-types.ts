@@ -9,16 +9,17 @@ export interface Collaborator {
   /** Human-readable alias (e.g. "Burna B.") */
   alias: string;
   /** Percentage share in basis points (e.g. 5000 = 50.00%) Using basis points avoids floating point entirely. */
-  basisPoints: number;
+  basis_points: number;
 }
+
 
 export interface SplitProject {
   /** Unique project identifier */
-  projectId: string;
+  project_id: string;
   /** Human-readable project title */
   title: string;
   /** Project type: "music", "film", "art", "podcast", "book", "other" */
-  projectType: string;
+  project_type: string;
   /** Token contract address (XLM or USDC) */
   token: string;
   /** The project creator / admin address */
@@ -28,21 +29,44 @@ export interface SplitProject {
   /** Whether the split is locked (immutable after locking) */
   locked: boolean;
   /** Total funds distributed so far (in token stroops) */
-  totalDistributed: string;
+  total_distributed: string;
   /** Number of successful distribution rounds completed */
-  distributionRound: number;
+  distribution_round: number;
 }
+
 
 export interface ClaimableInfo {
   /** Total amount claimed (paid out) to this collaborator across all rounds */
   claimed: string;
   /** Number of distribution rounds completed for this project */
-  distributionRound: number;
+  distribution_round: number;
 }
 
 // Method Argument Types
 
-export type CreateProjectArgs = {
+export type Set_adminArgs = {
+  admin: string;
+};
+
+export type Pause_distributionsArgs = {
+  admin: string;
+};
+
+export type Unpause_distributionsArgs = {
+  admin: string;
+};
+
+export type Allow_tokenArgs = {
+  admin: string;
+  token: string;
+};
+
+export type Disallow_tokenArgs = {
+  admin: string;
+  token: string;
+};
+
+export type Create_projectArgs = {
   owner: string;
   project_id: string;
   title: string;
@@ -51,13 +75,13 @@ export type CreateProjectArgs = {
   collaborators: Array<Collaborator>;
 };
 
-export type UpdateCollaboratorsArgs = {
+export type Update_collaboratorsArgs = {
   project_id: string;
   owner: string;
   collaborators: Array<Collaborator>;
 };
 
-export type LockProjectArgs = {
+export type Lock_projectArgs = {
   project_id: string;
   owner: string;
 };
@@ -72,113 +96,121 @@ export type DistributeArgs = {
   project_id: string;
 };
 
-export type GetProjectArgs = {
+export type Get_projectArgs = {
   project_id: string;
 };
 
-export type ProjectExistsArgs = {
+export type Project_existsArgs = {
   project_id: string;
 };
 
-export type GetClaimedArgs = {
+export type Get_claimedArgs = {
   project_id: string;
   address: string;
 };
 
-export type RefreshProjectStorageArgs = {
+export type Refresh_project_storageArgs = {
   project_id: string;
 };
 
-export type ListProjectsArgs = {
+export type List_projectsArgs = {
   start: number;
   limit: number;
 };
 
-export type GetBalanceArgs = {
+export type Get_balanceArgs = {
   project_id: string;
 };
 
-export type GetUnallocatedBalanceArgs = {
+export type Get_unallocated_balanceArgs = {
   token: string;
 };
 
-export type WithdrawUnallocatedArgs = {
+export type Withdraw_unallocatedArgs = {
   admin: string;
   token: string;
   to: string;
   amount: string;
 };
 
-export type IsTokenAllowedArgs = {
+export type Is_token_allowedArgs = {
   token: string;
 };
 
-export type GetAllowedTokenCountArgs = {};
-
-export type GetAllowedTokensArgs = {
+export type Get_allowed_tokensArgs = {
   start: number;
   limit: number;
 };
 
-export type GetAdminArgs = {};
-
-export type GetProjectIdsArgs = {
+export type Get_project_idsArgs = {
   start: number;
   limit: number;
 };
 
-export type GetClaimableArgs = {
+export type Get_claimableArgs = {
   project_id: string;
   collaborator: string;
 };
 
-export type UpdateProjectMetadataArgs = {
+export type Update_project_metadataArgs = {
   project_id: string;
   owner: string;
   title: string;
   project_type: string;
 };
 
+export type Transfer_project_ownershipArgs = {
+  project_id: string;
+  current_owner: string;
+  new_owner: string;
+};
+
 // Event Types
 
-export interface ProjectCreatedEvent {
+export interface Project_createdEvent {
   project_id: string;
   owner: string;
 }
 
-export interface ProjectLockedEvent {
+export interface Project_lockedEvent {
   project_id: string;
 }
 
-export interface PaymentSentEvent {
+export interface Payment_sentEvent {
   project_id: string;
   recipient: string;
   amount: string;
 }
 
-export interface DistributionCompleteEvent {
+export interface Distribution_completeEvent {
   project_id: string;
   round: number;
   total: string;
 }
 
-export interface DepositReceivedEvent {
+export interface Deposit_receivedEvent {
   project_id: string;
   from: string;
   amount: string;
   project_balance: string;
 }
 
-export interface MetadataUpdatedEvent {
+export interface Metadata_updatedEvent {
   project_id: string;
 }
 
-export interface UnallocatedWithdrawnEvent {
+export interface Unallocated_withdrawnEvent {
   token: string;
   admin: string;
   to: string;
   amount: string;
   remaining_unallocated: string;
+}
+
+export interface Ownership_transferredEvent {
+  project_id: string;
+  previous_owner: string;
+  new_owner: string;
 }
 
 // Error Types
@@ -199,7 +231,7 @@ export const ContractErrors = {
   AdminNotSet: 13,
   ArithmeticOverflow: 14,
   InsufficientUnallocated: 15,
-  DistributionsPaused: 16
+  DistributionsPaused: 16,
 } as const;
 
 export type ContractErrorCode = typeof ContractErrors[keyof typeof ContractErrors];

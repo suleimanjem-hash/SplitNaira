@@ -2,6 +2,7 @@
 
 import { rpc, Transaction, type FeeBumpTransaction } from "@stellar/stellar-sdk";
 
+import { formatContractFailure } from "./contract-errors";
 import { getEnv } from "./env";
 
 const DEFAULT_POLL_ATTEMPTS = 90;
@@ -30,7 +31,11 @@ function submissionErrorMessage(submit: rpc.Api.SendTransactionResponse): string
 function ledgerFailureMessage(polled: rpc.Api.GetTransactionResponse): string {
   if (polled.status === GET_TX.FAILED && "resultXdr" in polled && polled.resultXdr) {
     try {
-      return polled.resultXdr.toString();
+      const raw = polled.resultXdr.toString();
+      return formatContractFailure(
+        raw,
+        "Transaction failed on ledger (see explorer for details)."
+      );
     } catch {
       /* fall through */
     }

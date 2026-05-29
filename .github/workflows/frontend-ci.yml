@@ -25,6 +25,9 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Verify contract data integrity
+        run: npm run verify:data-integrity
+
       - name: Run Lint
         run: npm run lint -w frontend
 
