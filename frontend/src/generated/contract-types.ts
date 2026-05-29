@@ -96,6 +96,10 @@ export type DistributeArgs = {
   project_id: string;
 };
 
+export type Batch_distributeArgs = {
+  project_ids: Array<string>;
+};
+
 export type Get_projectArgs = {
   project_id: string;
 };

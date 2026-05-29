@@ -64,12 +64,39 @@ vi.mock("@/lib/wallet", () => {
   };
 });
 
-vi.mock("@/hooks/useWallet", () => ({
-  useWallet: mocks.mockUseWallet
-}));
+vi.mock("@/hooks/useWallet", () => {
+  const React = require("react");
+  const WalletContext = React.createContext(null);
+  return {
+    useWallet: mocks.mockUseWallet,
+    useWalletState: () => {
+      try {
+        const val = mocks.mockUseWallet();
+        if (val) return val;
+      } catch (e) {}
+      return {
+        wallet: null,
+        loading: false,
+        error: null,
+        connect: vi.fn(),
+        refresh: vi.fn(),
+        disconnect: vi.fn()
+      };
+    },
+    WalletContext
+  };
+});
 
 vi.mock("@/lib/api", () => ({
   getAllSplits: mocks.mockGetAllSplits,
+  listProjects: vi.fn().mockImplementation(async (...args) => {
+    try {
+      await mocks.mockGetSplit("dummy-id");
+    } catch (err) {
+      throw err;
+    }
+    return mocks.mockGetAllSplits(...args);
+  }),
   getClaimable: mocks.mockGetClaimable,
   getSplit: mocks.mockGetSplit,
   getProjectHistory: mocks.mockGetProjectHistory,
@@ -79,7 +106,14 @@ vi.mock("@/lib/api", () => ({
   buildCreateSplitXdr: mocks.mockBuildCreateSplitXdr,
   buildDepositXdr: mocks.mockBuildDepositXdr,
   buildAllowTokenXdr: mocks.mockBuildAllowTokenXdr,
-  buildDisallowTokenXdr: mocks.mockBuildDisallowTokenXdr
+  buildDisallowTokenXdr: mocks.mockBuildDisallowTokenXdr,
+  buildUpdateMetadataXdr: vi.fn().mockResolvedValue({ xdr: "MOCK_UPDATE_METADATA_XDR" }),
+  buildUpdateCollaboratorsXdr: vi.fn().mockResolvedValue({ xdr: "MOCK_UPDATE_COLLAB_XDR" }),
+  getUnallocatedBalance: vi.fn().mockResolvedValue({ balance: "0", owner: "" }),
+  buildWithdrawUnallocatedXdr: vi.fn().mockResolvedValue({ xdr: "MOCK_WITHDRAW_XDR" }),
+  getAdminStatus: vi.fn().mockResolvedValue({ paused: false, admin: "GOWNER123" }),
+  buildPauseDistributionsXdr: vi.fn().mockResolvedValue({ xdr: "MOCK_PAUSE_XDR" }),
+  buildUnpauseDistributionsXdr: vi.fn().mockResolvedValue({ xdr: "MOCK_UNPAUSE_XDR" })
 }));
 
 vi.mock("@stellar/stellar-sdk", () => ({

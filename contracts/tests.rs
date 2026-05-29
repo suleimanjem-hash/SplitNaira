@@ -743,6 +743,88 @@ fn test_distribute_fails_no_balance() {
 }
 
 #[test]
+fn test_batch_distribute_graceful_partial_failures() {
+    let (env, _token_admin, token) = create_test_env();
+    let contract_id = env.register_contract(None, SplitNairaContract);
+    let client = SplitNairaContractClient::new(&env, &contract_id);
+
+    let owner = Address::generate(&env);
+    let funder = Address::generate(&env);
+    let alice = Address::generate(&env);
+    let bob = Address::generate(&env);
+
+    let collabs = make_collaborators(
+        &env,
+        Vec::from_slice(&env, &[alice.clone(), bob.clone()]),
+        Vec::from_slice(&env, &[5000u32, 5000u32]),
+    );
+
+    let project_a = Symbol::new(&env, "project_a");
+    let project_b = Symbol::new(&env, "project_b");
+    let project_c = Symbol::new(&env, "project_c"); // empty project
+
+    client.create_project(&owner, &project_a, &String::from_str(&env, "Project A"), &String::from_str(&env, "music"), &token, &collabs);
+    client.create_project(&owner, &project_b, &String::from_str(&env, "Project B"), &String::from_str(&env, "art"), &token, &collabs);
+    client.create_project(&owner, &project_c, &String::from_str(&env, "Project C"), &String::from_str(&env, "video"), &token, &collabs);
+
+    // Deposit to project_a and project_b
+    deposit_to_project(&env, &client, &token, &project_a, &funder, 100_0000000i128);
+    deposit_to_project(&env, &client, &token, &project_b, &funder, 200_0000000i128);
+
+    // batch_distribute with project_c in the middle (which has zero balance)
+    let batch = Vec::from_slice(&env, &[project_a.clone(), project_c.clone(), project_b.clone()]);
+    client.batch_distribute(&batch);
+
+    // Verify project_a distributed
+    let proj_a = client.get_project(&project_a).unwrap();
+    assert_eq!(proj_a.distribution_round, 1);
+    assert_eq!(proj_a.total_distributed, 100_0000000i128);
+
+    // Verify project_b distributed
+    let proj_b = client.get_project(&project_b).unwrap();
+    assert_eq!(proj_b.distribution_round, 1);
+    assert_eq!(proj_b.total_distributed, 200_0000000i128);
+
+    // Verify project_c was gracefully skipped and distribution_round remains 0
+    let proj_c = client.get_project(&project_c).unwrap();
+    assert_eq!(proj_c.distribution_round, 0);
+
+    // Verify collaborator total balances (50k from a, 100k from b = 150k total)
+    let token_balance = token::Client::new(&env, &token);
+    assert_eq!(token_balance.balance(&alice), 150_0000000i128);
+    assert_eq!(token_balance.balance(&bob), 150_0000000i128);
+}
+
+#[test]
+fn test_batch_distribute_fails_when_paused() {
+    let (env, _token_admin, token) = create_test_env();
+    let contract_id = env.register_contract(None, SplitNairaContract);
+    let client = SplitNairaContractClient::new(&env, &contract_id);
+
+    let owner = Address::generate(&env);
+    let alice = Address::generate(&env);
+    let bob = Address::generate(&env);
+
+    let collabs = make_collaborators(
+        &env,
+        Vec::from_slice(&env, &[alice.clone(), bob.clone()]),
+        Vec::from_slice(&env, &[5000u32, 5000u32]),
+    );
+
+    let project_a = Symbol::new(&env, "project_a");
+    client.create_project(&owner, &project_a, &String::from_str(&env, "Project A"), &String::from_str(&env, "music"), &token, &collabs);
+
+    // Set contract admin and pause distributions
+    let admin = Address::generate(&env);
+    client.set_admin(&admin);
+    client.pause_distributions(&admin);
+
+    let batch = Vec::from_slice(&env, &[project_a.clone()]);
+    let result = client.try_batch_distribute(&batch);
+    assert_eq!(result, Err(Ok(SplitError::DistributionsPaused)));
+}
+
+#[test]
 fn test_distribution_round_increments_only_on_success() {
     let (env, _admin, token) = create_test_env();
     let contract_id = env.register_contract(None, SplitNairaContract);

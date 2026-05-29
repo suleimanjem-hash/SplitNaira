@@ -303,17 +303,19 @@ export class ApiClient {
   }
 
   async getSplit(projectId: string): Promise<SplitProject> {
-    return this.requestJson<SplitProject>(
+    const raw = await this.requestJson<any>(
       `/splits/${encodeURIComponent(projectId)}`,
       "Failed to fetch split project",
     );
+    return mapProjectToCamelCase(raw);
   }
 
   async getAllSplits(): Promise<SplitProject[]> {
-    return this.requestJson<SplitProject[]>(
+    const raws = await this.requestJson<any[]>(
       "/splits",
       "Failed to fetch projects",
     );
+    return raws.map(mapProjectToCamelCase);
   }
 
   async listProjects(
@@ -325,10 +327,11 @@ export class ApiClient {
     if (params?.search !== undefined && params.search) query.set("search", params.search);
     if (params?.type !== undefined && params.type) query.set("type", params.type);
     const suffix = query.toString() ? `?${query.toString()}` : "";
-    return this.requestJson<SplitProject[]>(
+    const raws = await this.requestJson<any[]>(
       `/splits${suffix}`,
       "Failed to fetch projects",
     );
+    return raws.map(mapProjectToCamelCase);
   }
 
   async getClaimable(
@@ -393,4 +396,24 @@ export class ApiClient {
       "Failed to fetch unallocated balance",
     );
   }
+}
+
+function mapProjectToCamelCase(p: any): SplitProject {
+  if (!p) return p;
+  return {
+    projectId: p.projectId ?? p.project_id ?? "",
+    title: p.title ?? "",
+    projectType: p.projectType ?? p.project_type ?? "",
+    token: p.token ?? "",
+    owner: p.owner ?? "",
+    locked: p.locked ?? false,
+    balance: p.balance ?? "0",
+    totalDistributed: p.totalDistributed ?? p.total_distributed ?? "0",
+    distributionRound: p.distributionRound ?? p.distribution_round ?? 0,
+    collaborators: (p.collaborators ?? []).map((c: any) => ({
+      address: c.address ?? "",
+      alias: c.alias ?? "",
+      basisPoints: c.basisPoints ?? c.basis_points ?? 0,
+    })),
+  };
 }

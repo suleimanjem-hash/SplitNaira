@@ -16,6 +16,7 @@ import { globalLimiter, readLimiter, writeLimiter, adminLimiter, authLimiter } f
 import { validateEnv, printEnvDiagnostics } from "./config/env.js";
 import { initDatabase, closeDatabase } from "./services/database.js";
 import { logger } from "./services/logger.js";
+import { startEventListenerService, stopEventListenerService } from "./services/EventListenerService.js";
 
 dotenv.config();
 
@@ -135,6 +136,7 @@ if (process.env.NODE_ENV !== "test") {
       validateEnv();
 
       await initDatabase();
+      await startEventListenerService();
 
       const port = Number(process.env.PORT ?? 3001);
       const server = app.listen(port, () => {
@@ -144,6 +146,7 @@ if (process.env.NODE_ENV !== "test") {
       // Graceful shutdown
       const shutdown = async (signal: NodeJS.Signals) => {
         logger.info(`Received ${signal}. Shutting down...`);
+        stopEventListenerService();
         await closeDatabase();
         server.close((err?: Error) => {
           if (err) {

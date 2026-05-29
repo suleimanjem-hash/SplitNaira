@@ -580,6 +580,37 @@ impl SplitNairaContract {
         Ok(())
     }
 
+    /// Distributes balances for multiple projects in a single transaction.
+    ///
+    /// Handles partial failures (such as empty balance or project not found)
+    /// gracefully by skipping them and continuing to the next.
+    ///
+    /// # Arguments
+    /// * `env`         - Soroban environment
+    /// * `project_ids` - Vector of project IDs to distribute
+    pub fn batch_distribute(env: Env, project_ids: Vec<Symbol>) -> Result<(), SplitError> {
+        let paused: bool = env
+            .storage()
+            .persistent()
+            .get::<DataKey, bool>(&DataKey::DistributionsPaused)
+            .unwrap_or(false);
+        if paused {
+            return Err(SplitError::DistributionsPaused);
+        }
+
+        for project_id in project_ids.iter() {
+            match Self::distribute(env.clone(), project_id) {
+                Ok(_) => {}
+                Err(SplitError::DistributionsPaused) => return Err(SplitError::DistributionsPaused),
+                Err(_) => {
+                    // Gracefully skip other errors
+                }
+            }
+        }
+
+        Ok(())
+    }
+
     // ----------------------------------------------------------
     // READ-ONLY QUERIES
     // ----------------------------------------------------------
@@ -1041,6 +1072,14 @@ impl SplitNairaContract {
                     .get::<DataKey, Vec<Symbol>>(&DataKey::ProjectIdsBucket(bucket))
                     .unwrap_or(Vec::new(env));
                 let remaining_in_bucket = bucket_data.len().saturating_sub(offset as u32);
+                if remaining_in_bucket == 0 {
+                    let next_bucket_idx = (bucket + 1) * PROJECT_ID_BUCKET_SIZE;
+                    if next_bucket_idx <= idx {
+                        break;
+                    }
+                    idx = next_bucket_idx;
+                    continue;
+                }
                 let needed = end.saturating_sub(idx);
                 let take = remaining_in_bucket.min(needed);
                 for i in 0..take {

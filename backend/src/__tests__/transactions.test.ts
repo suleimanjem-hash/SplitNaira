@@ -1,6 +1,53 @@
-import { describe, it, expect, beforeAll } from "vitest";
+import { describe, it, expect, beforeAll, vi } from "vitest";
 import request from "supertest";
+
+const mockTransactionRecords = [
+  {
+    id: "tx-1",
+    roundId: "round-1",
+    recipient: "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF",
+    amount: "1000",
+    token: "CAS3...",
+    timestamp: Math.floor(Date.now() / 1000) - 3600,
+    txHash: "validhash123",
+    status: "completed"
+  }
+];
+
+const mockGetMany = vi.fn().mockResolvedValue(mockTransactionRecords);
+const mockFindOneBy = vi.fn().mockResolvedValue(null);
+const mockFindBy = vi.fn().mockResolvedValue(mockTransactionRecords);
+const mockFind = vi.fn().mockImplementation((options) => {
+  const optionsStr = JSON.stringify(options || {});
+  if (optionsStr.includes("nonexistent")) {
+    return [];
+  }
+  return mockTransactionRecords;
+});
+
+const mockQueryBuilder = {
+  andWhere: vi.fn().mockReturnThis(),
+  orderBy: vi.fn().mockReturnThis(),
+  skip: vi.fn().mockReturnThis(),
+  take: vi.fn().mockReturnThis(),
+  getMany: mockGetMany
+};
+
+vi.mock("../services/database.js", () => ({
+  getDataSource: () => ({
+    getRepository: () => ({
+      createQueryBuilder: () => mockQueryBuilder,
+      findOneBy: mockFindOneBy,
+      findBy: mockFindBy,
+      find: mockFind
+    })
+  }),
+  initDatabase: async () => {},
+  closeDatabase: async () => {}
+}));
+
 import { app } from "../index.js";
+
 
 describe("Transaction History API", () => {
   beforeAll(async () => {
