@@ -42,7 +42,9 @@ vi.mock("../services/database.js", () => ({
       release: releaseMock
     };
     try {
-      return await callback(mockQueryRunner);
+      const result = await callback(mockQueryRunner);
+      commitMock();
+      return result;
     } catch (error) {
       rollbackMock();
       throw error;
@@ -200,6 +202,52 @@ describe("User Registration API", () => {
     });
   });
 
+  describe("POST /users/login", () => {
+    it("should log in an existing user with valid wallet address", async () => {
+      const walletAddress = "GEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEE";
+      findOneMock.mockResolvedValue({
+        id: "22222222-2222-4222-8222-222222222222",
+        walletAddress,
+        email: "test@example.com",
+        alias: "LoginUser",
+        role: "user",
+        isActive: true,
+        createdAt: NOW,
+        updatedAt: NOW
+      });
+      const app = createApp();
+
+      const response = await request(app)
+        .post("/users/login")
+        .send({ walletAddress });
+
+      expect(response.status).toBe(200);
+      expect(response.body.walletAddress).toBe(walletAddress);
+      expect(response.body.alias).toBe("LoginUser");
+    });
+
+    it("should return 404 for non-existent user", async () => {
+      findOneMock.mockResolvedValue(null);
+      const app = createApp();
+
+      const response = await request(app)
+        .post("/users/login")
+        .send({ walletAddress: "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF" });
+
+      expect(response.status).toBe(404);
+    });
+
+    it("should reject invalid wallet address format", async () => {
+      const app = createApp();
+
+      const response = await request(app)
+        .post("/users/login")
+        .send({ walletAddress: "INVALID_ADDRESS" });
+
+      expect(response.status).toBe(400);
+    });
+  });
+
   describe("Transaction Safety", () => {
     it("should rollback user registration on save failure", async () => {
       findOneMock.mockResolvedValue(null);
@@ -217,6 +265,22 @@ describe("User Registration API", () => {
 
       expect(response.status).toBe(500);
       expect(rollbackMock).toHaveBeenCalled();
+    });
+
+    it("should commit user registration on success", async () => {
+      findOneMock.mockResolvedValue(null);
+      const app = createApp();
+
+      const response = await request(app)
+        .post("/users/register")
+        .send({
+          walletAddress: "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF",
+          email: "test@example.com",
+          alias: "TestUser"
+        });
+
+      expect(response.status).toBe(201);
+      expect(commitMock).toHaveBeenCalled();
     });
 
   });

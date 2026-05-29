@@ -15,6 +15,7 @@
  */
 
 import type { Request, Response, NextFunction } from "express";
+import { createHash } from "node:crypto";
 import {
   STELLAR_ADDRESS_HEADER,
   canAccessProject,
@@ -93,11 +94,12 @@ export function requireProjectAccess(
       }
 
       if (!canAccessProject(requester, target)) {
+        const hashedIp = req.ip ? createHash("sha256").update(req.ip).digest("hex").slice(0, 16) : "unknown";
         logger.warn("Unauthorized project access attempt blocked", {
           requester,
           projectId,
           requestId: res.locals.requestId,
-          ip: req.ip,
+          ip: hashedIp,
         });
         next(createUnauthorizedProjectAccessError());
         return;
