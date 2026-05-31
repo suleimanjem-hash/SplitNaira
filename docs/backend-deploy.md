@@ -4,14 +4,17 @@ This project deploys the backend via GitHub Actions using Render deploy hooks.
 
 ## Workflow
 
-- File: `.github/workflows/backend-deploy.yml`
+- Files:
+  - `.github/workflows/backend-deploy.yml`
+  - `.github/workflows/mainnet-deploy.yml`
 - Triggered on:
-  - Push to `main` (for merge-based CD)
-  - Manual run via `workflow_dispatch`
+  - Push to `main` (for merge-based CD via backend-deploy)
+  - Manual run via `workflow_dispatch` (backend-deploy or mainnet-deploy)
 - Pipeline stages:
   - `verify-backend`: install, lint, and build backend
-  - `verify-migrations`: run TypeORM migrations against a clean PostgreSQL service database
+  - `validate-deploy-config`: verify `deploy_environment` and production secrets before deployment
   - `deploy-backend`: trigger deployment target
+  - `deploy-mainnet`: explicit mainnet release path for production
 
 ## Deployment Target
 
@@ -30,6 +33,8 @@ Set these in GitHub repository settings under **Settings -> Secrets and variable
 
 - `RENDER_BACKEND_DEPLOY_HOOK_URL`
   - Value: Render backend service deploy hook URL
+- `MAINNET_CONTRACT_ID`
+  - Value: Mainnet Soroban contract ID to validate production deploy readiness
 
 ## Optional Variables
 

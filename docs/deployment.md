@@ -227,9 +227,21 @@ Push to `main` or trigger the workflow manually:
 
 1. Go to **Actions → Backend Deploy** in GitHub.
 2. Click **Run workflow** and select the `main` branch.
-3. The pipeline runs `verify-backend` (lint + build) then calls the Render deploy hook.
+3. Set `deploy_environment` to `staging` or `production`.
+4. The pipeline runs `verify-backend` (lint + build), validates deployment configuration, then calls the Render deploy hook.
 
-Required GitHub secret: `RENDER_BACKEND_DEPLOY_HOOK_URL`
+Required GitHub secrets:
+- `RENDER_BACKEND_DEPLOY_HOOK_URL`
+- `MAINNET_CONTRACT_ID` (production only)
+
+### Mainnet release
+
+For explicit production releases, use the dedicated manual workflow:
+
+- **Actions → Mainnet Deploy**
+- `deploy_environment` defaults to `production`
+- This workflow validates mainnet deploy configuration before invoking Render
+- It is intended for safe, human-reviewed mainnet rollouts
 
 See [docs/backend-deploy.md](./backend-deploy.md) for full CI/CD details.
 

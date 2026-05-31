@@ -11,7 +11,7 @@ GitHub Actions must block merges when contract artifacts drift, when Rust format
 | `ci.yml` | PR + push to `main` | `data-integrity` → frontend, backend, contracts |
 | `frontend-ci.yml` | PR + push to `main` / `develop` | lint, test, build |
 | `contract-testnet-deploy.yml` | `contracts/**` on `main` | testnet WASM deploy + config commit |
-| `backend-deploy.yml` | backend release path | Render deploy |
+| `backend-deploy.yml` | backend release path | deploy config validation, Render deploy |
 
 ## Data integrity job
 
@@ -49,8 +49,9 @@ npm run test
 ## Rollback
 
 1. **Revert the failing PR** — CI returns green on `main`.
-2. **Skip deploy workflows** — Do not run `contract-testnet-deploy` manually unless secrets and network are validated.
-3. **Re-run failed jobs** — Transient RPC or npm registry issues; no config change.
+2. **Skip deploy workflows** — Do not run `contract-testnet-deploy` or `backend-deploy` manually if production secrets are invalid.
+3. **Use the GitHub environment rollback path** — Render keeps previous deploys and the backend workflow is safe to rerun.
+4. **Re-run failed jobs** — Transient RPC or npm registry issues; no config change.
 
 ## Adding new checks
 

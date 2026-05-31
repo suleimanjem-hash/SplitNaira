@@ -21,8 +21,10 @@ Deliver production-grade CI/CD compliance improvements for SplitNaira.
 
 ### 4. Deployment Safety
 - Testnet deploy only triggers on main branch push
-- No production deploy without passing CI
-- Rollback: revert commit and push to main triggers redeploy
+- Backend deploy workflow now validates `deploy_environment` and production secrets before invoking Render
+- `mainnet-deploy.yml` provides an explicit manual production release gate for human-reviewed launches
+- Production deploys require `MAINNET_CONTRACT_ID` and `RENDER_BACKEND_DEPLOY_HOOK_URL` secrets, preventing unsafe launch attempts
+- Rollback: revert commit and push to main triggers redeploy, and Render retains prior deploy revisions
 
 ## Rollback Notes
 CI config changes take effect immediately on next push. Revert this PR to restore previous pipeline.
