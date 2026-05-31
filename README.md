@@ -121,6 +121,13 @@ splitNaira/
 npm run verify:data-integrity   # contract interface + generated types in sync
 ```
 
+## Mainnet launch readiness
+
+- `backend-deploy.yml` now validates production deploy configuration and required secrets before triggering Render.
+- `mainnet-deploy.yml` provides an explicit manual production release gate for human-reviewed mainnet launch.
+- CI pipelines use concurrency groups to cancel stale runs and keep mainline validation fast.
+- Operational rollback guidance is documented in `docs/runbooks/ci-data-integrity.md` and `docs/deployment.md`.
+
 ## License
 
 MIT

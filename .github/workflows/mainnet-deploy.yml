@@ -1,42 +1,26 @@
-name: Backend Deploy
+name: Mainnet Deploy
 
 on:
-  push:
-    branches: [main]
   workflow_dispatch:
     inputs:
       deploy_target:
         description: "Deployment target override (defaults to repo variable BACKEND_DEPLOY_TARGET)"
         required: false
-        default: ""
+        default: "render"
       deploy_environment:
-        description: "Target deployment environment: staging or production"
+        description: "Deployment environment for this workflow"
         required: false
-        default: "staging"
+        default: "production"
 
 permissions:
   contents: read
 
 concurrency:
-  group: backend-deploy-main
+  group: mainnet-deploy
   cancel-in-progress: true
 
 jobs:
-  verify-backend:
-    runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: backend
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v6
-        with:
-          node-version: 20
-      - run: npm ci --no-audit --no-fund
-      - run: npm run lint
-      - run: npm run build
-
-  validate-deploy-config:
+  validate-mainnet-config:
     runs-on: ubuntu-latest
     env:
       DEPLOY_TARGET_INPUT: ${{ github.event.inputs.deploy_target }}
@@ -50,20 +34,19 @@ jobs:
         with:
           node-version: 20
       - run: npm ci --no-audit --no-fund
-      - name: Validate deploy configuration
+      - name: Validate mainnet deploy configuration
         run: npx tsx backend/src/utils/deploy-config.ts validate "$DEPLOY_TARGET_INPUT" "$DEPLOY_ENV_INPUT"
 
-  deploy-backend:
+  deploy-mainnet:
     runs-on: ubuntu-latest
-    needs:
-      - verify-backend
-      - validate-deploy-config
-    environment: ${{ github.event.inputs.deploy_environment || 'staging' }}
+    needs: validate-mainnet-config
+    environment: production
     env:
       DEPLOY_TARGET_INPUT: ${{ github.event.inputs.deploy_target }}
       DEPLOY_TARGET_REPO: ${{ vars.BACKEND_DEPLOY_TARGET }}
-      DEPLOY_ENV_INPUT: ${{ github.event.inputs.deploy_environment }}
     steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
       - name: Resolve deploy target
         id: target
         run: |
@@ -75,7 +58,7 @@ jobs:
             target="render"
           fi
           echo "target=$target" >> "$GITHUB_OUTPUT"
-          echo "Resolved backend deploy target: $target"
+          echo "Resolved mainnet deploy target: $target"
 
       - name: Trigger Render backend deploy
         if: steps.target.outputs.target == 'render'
@@ -86,7 +69,7 @@ jobs:
             echo "Missing required secret: RENDER_BACKEND_DEPLOY_HOOK_URL"
             exit 1
           fi
-          curl --fail --silent --show-error -X POST "$RENDER_DEPLOY_HOOK_URL"
+          curl --fail --silent --show-error -X POST "$RENDER_BACKEND_DEPLOY_HOOK_URL"
           echo "Render deploy triggered successfully."
 
       - name: Fail on unsupported deploy target
@@ -95,4 +78,3 @@ jobs:
           echo "Unsupported deploy target: ${{ steps.target.outputs.target }}"
           echo "Supported targets: render"
           exit 1
-
