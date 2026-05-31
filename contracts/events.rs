@@ -198,3 +198,4 @@ impl CollaboratorsUpdated {
         );
     }
 }
+

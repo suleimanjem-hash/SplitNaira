@@ -11,6 +11,8 @@ const PROJECT_ID_BUCKET_SIZE: u32 = 100;
 mod errors;
 mod events;
 use events::{
+    CollaboratorsUpdated, DepositReceived, DistributionComplete, MetadataUpdated,
+    OwnershipTransferred, PaymentSent, ProjectCreated, ProjectLocked, UnallocatedWithdrawn,
     DepositReceived, DistributionComplete, MetadataUpdated, OwnershipTransferred, PaymentSent,
     ProjectCreated, ProjectLocked, UnallocatedWithdrawn, CollaboratorsUpdated,
 };
