@@ -189,7 +189,7 @@ export function ProjectsList({
                   {fetchedProject.collaborators.map((collab, idx) => (
                     <div key={idx} className="flex justify-between items-center rounded-2xl bg-white/2 p-4 text-sm border border-white/5 hover:bg-white/4 transition-colors">
                       <div className="space-y-0.5">
-                        <p className="font-bold">{collab.alias}</p>
+                        <p className="font-bold">{sanitizeText(collab.alias)}</p>
                         <p className="font-mono text-[10px] text-muted opacity-60 truncate max-w-[150px]">{collab.address}</p>
                       </div>
                       <span className="font-mono font-bold text-greenBright/80">
