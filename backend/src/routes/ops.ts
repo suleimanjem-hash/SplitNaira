@@ -34,7 +34,7 @@ export interface MainnetReadinessResponse {
   };
 }
 
-opsRouter.get("/mainnet-readiness", async (_req, res, next) => {
+opsRouter.get("/mainnet-readiness", async (_req, res) => {
   const requestId = res.locals.requestId;
   const envDiagnostics = getEnvDiagnostics();
 
