@@ -61,7 +61,7 @@ CONTRACT_ID=C... NETWORK=testnet ./scripts/sync-contracts.sh --non-interactive
 
 1. Restore previous `CONTRACT_ID` in backend + frontend env from `contracts/deployments.json` or last `release-info.json`.
 2. Redeploy backend and frontend with previous values.
-3. Verify `/health` and a read-only project list.
+3. Verify `/health` and `/ops/mainnet-readiness` to confirm the rollback environment is stable.
 
 ### Contract emergency
 
