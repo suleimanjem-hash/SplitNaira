@@ -85,6 +85,29 @@ const backendEnvSchema = z.object({
       (val) => val === undefined || (Number.isInteger(Number(val)) && Number(val) > 0),
       "DATABASE_POOL_MAX must be a positive integer",
     ),
+
+  DATABASE_POOL_IDLE_MS: z
+    .string()
+    .optional()
+    .refine(
+      (val) => val === undefined || (Number.isInteger(Number(val)) && Number(val) > 0),
+      "DATABASE_POOL_IDLE_MS must be a positive integer",
+    ),
+
+  DATABASE_POOL_CONN_TIMEOUT_MS: z
+    .string()
+    .optional()
+    .refine(
+      (val) => val === undefined || (Number.isInteger(Number(val)) && Number(val) > 0),
+      "DATABASE_POOL_CONN_TIMEOUT_MS must be a positive integer",
+    ),
+
+  MAINNET_CONTRACT_ID: stellarContractIdSchema.optional(),
+
+  RENDER_BACKEND_DEPLOY_HOOK_URL: z
+    .string()
+    .url("RENDER_BACKEND_DEPLOY_HOOK_URL must be a valid URL")
+    .optional(),
 }).superRefine((data, ctx) => {
   if (data.NODE_ENV === "production") {
     if (!data.CORS_ORIGIN || data.CORS_ORIGIN.trim().length === 0) {
