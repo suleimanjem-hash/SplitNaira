@@ -32,6 +32,7 @@ CONTRACT_ID=C... NETWORK=testnet ./scripts/sync-contracts.sh --non-interactive
 - [ ] `CONTRACT_ID` matches target network (testnet vs mainnet)
 - [ ] Backend `CONTRACT_ID` and frontend `NEXT_PUBLIC_CONTRACT_ID` match
 - [ ] Database migrations applied (`npm run migration:run -w backend`)
+- [ ] `GET /ops/mainnet-readiness` returns `ready` and no missing production config issues
 
 ## Deploy order
 
