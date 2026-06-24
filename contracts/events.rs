@@ -211,10 +211,7 @@ pub struct DistributionsPaused {
 impl DistributionsPaused {
     pub fn publish(&self, env: &Env) {
         env.events().publish(
-            (
-                Symbol::new(env, "distributions_paused"),
-                self.admin.clone(),
-            ),
+            (Symbol::new(env, "distributions_paused"), self.admin.clone()),
             (),
         );
     }
@@ -240,8 +237,6 @@ impl DistributionsUnpaused {
         );
     }
 }
-
-
 
 /// Emitted when a collaborator self-service claims their proportional share.
 ///

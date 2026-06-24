@@ -11,19 +11,9 @@ const PROJECT_ID_BUCKET_SIZE: u32 = 100;
 mod errors;
 mod events;
 use events::{
-    CollaboratorsUpdated,
-    DepositReceived,
-    DistributionComplete,
-    DistributionsPaused,
-    DistributionsUnpaused,
-    MetadataUpdated,
-    OwnershipTransferred,
-    PaymentSent,
-    ProjectCreated,
-    ProjectLocked,
-  CollaboratorClaimed,
-    UnallocatedWithdrawn,
-    SplitsUpdatedWithPendingBalance,
+    CollaboratorClaimed, CollaboratorsUpdated, DepositReceived, DistributionComplete,
+    DistributionsPaused, DistributionsUnpaused, MetadataUpdated, OwnershipTransferred, PaymentSent,
+    ProjectCreated, ProjectLocked, SplitsUpdatedWithPendingBalance, UnallocatedWithdrawn,
 };
 #[cfg(test)]
 mod tests;
@@ -165,7 +155,10 @@ impl SplitNairaContract {
             .persistent()
             .set(&DataKey::DistributionsPaused, &true);
 
-        DistributionsPaused { admin: admin.clone() }.publish(&env);
+        DistributionsPaused {
+            admin: admin.clone(),
+        }
+        .publish(&env);
         Ok(())
     }
 
@@ -177,7 +170,10 @@ impl SplitNairaContract {
             .persistent()
             .set(&DataKey::DistributionsPaused, &false);
 
-        DistributionsUnpaused { admin: admin.clone() }.publish(&env);
+        DistributionsUnpaused {
+            admin: admin.clone(),
+        }
+        .publish(&env);
         Ok(())
     }
 
@@ -375,9 +371,9 @@ impl SplitNairaContract {
 
     /// Updates collaborator addresses and basis point splits for an existing project.
     /// Only the project owner can update, and only while the project is unlocked.
-    /// 
-    /// Note: Changing splits applies immediately and affects both future deposits 
-    /// and any undistributed pending balance. If updated while the project balance 
+    ///
+    /// Note: Changing splits applies immediately and affects both future deposits
+    /// and any undistributed pending balance. If updated while the project balance
     /// is > 0, a `SplitsUpdatedWithPendingBalance` warning event is emitted.
     pub fn update_collaborators(
         env: Env,
@@ -403,7 +399,7 @@ impl SplitNairaContract {
             .persistent()
             .get::<DataKey, i128>(&DataKey::ProjectBalance(project_id.clone()))
             .unwrap_or(0);
-        
+
         if balance > 0 {
             SplitsUpdatedWithPendingBalance {
                 project_id: project_id.clone(),
@@ -646,7 +642,9 @@ impl SplitNairaContract {
         for project_id in project_ids.iter() {
             match Self::distribute(env.clone(), project_id) {
                 Ok(_) => {}
-                Err(SplitError::DistributionsPaused) => return Err(SplitError::DistributionsPaused),
+                Err(SplitError::DistributionsPaused) => {
+                    return Err(SplitError::DistributionsPaused)
+                }
                 Err(_) => {
                     // Gracefully skip other errors
                 }
@@ -679,11 +677,7 @@ impl SplitNairaContract {
     /// * `SplitError::NotFound`          — project does not exist
     /// * `SplitError::NotACollaborator`  — claimer is not a collaborator
     /// * `SplitError::DistributionsPaused` — global pause is active
-    pub fn claim(
-        env: Env,
-        project_id: Symbol,
-        claimer: Address,
-    ) -> Result<i128, SplitError> {
+    pub fn claim(env: Env, project_id: Symbol, claimer: Address) -> Result<i128, SplitError> {
         claimer.require_auth();
 
         let paused: bool = env
@@ -723,9 +717,10 @@ impl SplitNairaContract {
         }
 
         // Reduce project balance
-        env.storage()
-            .persistent()
-            .set(&DataKey::ProjectBalance(project_id.clone()), &(balance - amount));
+        env.storage().persistent().set(
+            &DataKey::ProjectBalance(project_id.clone()),
+            &(balance - amount),
+        );
         Self::adjust_accounted_token_balance(&env, &project.token, -amount)?;
 
         // Record the payout in the project distribution totals.
@@ -1304,8 +1299,14 @@ impl SplitNairaContract {
         delta: i128,
     ) -> Result<(), SplitError> {
         let key = DataKey::AccountedTokenBalance(token.clone());
-        let prev: i128 = env.storage().persistent().get::<DataKey, i128>(&key).unwrap_or(0);
-        let next = prev.checked_add(delta).ok_or(SplitError::ArithmeticOverflow)?;
+        let prev: i128 = env
+            .storage()
+            .persistent()
+            .get::<DataKey, i128>(&key)
+            .unwrap_or(0);
+        let next = prev
+            .checked_add(delta)
+            .ok_or(SplitError::ArithmeticOverflow)?;
         env.storage().persistent().set(&key, &next);
         Ok(())
     }

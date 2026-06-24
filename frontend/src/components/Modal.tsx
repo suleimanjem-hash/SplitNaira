@@ -1,3 +1,4 @@
+/* eslint-disable jsx-a11y/no-noninteractive-element-interactions */
 import { useEffect, useRef } from "react";
 import "./Modal.css";
 import { useFocusTrap } from "./useFocusTrap";
