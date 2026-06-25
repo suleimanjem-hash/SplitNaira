@@ -3,7 +3,7 @@
 use super::*;
 use soroban_sdk::{
     testutils::{Address as _, Events as _},
-    token, vec, Address, Env, IntoVal, String, Symbol, Vec,
+    token, vec, Address, Env, IntoVal, TryFromVal, String, Symbol, Vec,
 };
 
 // ============================================================
@@ -545,11 +545,20 @@ fn test_update_collaborators_emits_event() {
     );
 
     let events = env.events().all();
-    let last_event = events.last().unwrap();
+    let last_event = events.last().unwrap().clone();
     assert_eq!(last_event.0, contract_id);
-    assert_eq!(last_event.1.get(0).unwrap(), Symbol::new(&env, "collaborators_updated").into_val(&env));
-    assert_eq!(last_event.1.get(1).unwrap(), project_id.into_val(&env));
-    assert_eq!(last_event.2, project_id.into_val(&env));
+    assert_eq!(
+        Symbol::try_from_val(&env, &last_event.1.get(0).unwrap()).unwrap(),
+        Symbol::new(&env, "collaborators_updated")
+    );
+    assert_eq!(
+        Symbol::try_from_val(&env, &last_event.1.get(1).unwrap()).unwrap(),
+        project_id
+    );
+    assert_eq!(
+        Symbol::try_from_val(&env, &last_event.2).unwrap(),
+        project_id
+    );
 }
 
 #[test]
@@ -1652,15 +1661,27 @@ fn test_pause_and_unpause_emit_events() {
     let events = env.events().all();
     assert!(events.len() >= before_count + 2);
 
-    let pause_event = events.get(before_count).unwrap();
+    let pause_event = events.get(before_count).unwrap().clone();
     assert_eq!(pause_event.0, contract_id);
-    assert_eq!(pause_event.1.get(0).unwrap(), Symbol::new(&env, "distributions_paused").into_val(&env));
-    assert_eq!(pause_event.1.get(1).unwrap(), admin.clone().into_val(&env));
+    assert_eq!(
+        Symbol::try_from_val(&env, &pause_event.1.get(0).unwrap()).unwrap(),
+        Symbol::new(&env, "distributions_paused")
+    );
+    assert_eq!(
+        Address::try_from_val(&env, &pause_event.1.get(1).unwrap()).unwrap(),
+        admin
+    );
 
-    let unpause_event = events.get(before_count + 1).unwrap();
+    let unpause_event = events.get(before_count + 1).unwrap().clone();
     assert_eq!(unpause_event.0, contract_id);
-    assert_eq!(unpause_event.1.get(0).unwrap(), Symbol::new(&env, "distributions_unpaused").into_val(&env));
-    assert_eq!(unpause_event.1.get(1).unwrap(), admin.clone().into_val(&env));
+    assert_eq!(
+        Symbol::try_from_val(&env, &unpause_event.1.get(0).unwrap()).unwrap(),
+        Symbol::new(&env, "distributions_unpaused")
+    );
+    assert_eq!(
+        Address::try_from_val(&env, &unpause_event.1.get(1).unwrap()).unwrap(),
+        admin
+    );
 }
 
 #[test]
@@ -2344,8 +2365,8 @@ fn test_unallocated_balance_remains_correct_after_claim() {
     assert_eq!(client.get_unallocated_balance(&token), 50_0000000i128);
 
     let claimed_amount = client.claim(&project_id, &alice);
-    assert_eq!(claimed_amount, 60_000000i128);
-    assert_eq!(token_client.balance(&alice), 60_000000i128);
+    assert_eq!(claimed_amount, 60_0000000i128);
+    assert_eq!(token_client.balance(&alice), 60_0000000i128);
     assert_eq!(client.get_unallocated_balance(&token), 50_0000000i128);
     assert_eq!(client.get_balance(&project_id), 40_0000000i128);
 }
@@ -2746,6 +2767,14 @@ fn test_transfer_ownership_success() {
 
     let project = client.get_project(&project_id).unwrap();
     assert_eq!(project.owner, new_owner);
+
+    // Old owner cannot perform owner-gated actions like locking the project
+    let result = client.try_lock_project(&project_id, &owner);
+    assert_eq!(result, Err(Ok(SplitError::Unauthorized)));
+
+    // New owner can successfully lock the project
+    client.lock_project(&project_id, &new_owner);
+    assert_eq!(client.get_project(&project_id).unwrap().locked, true);
 }
 
 #[test]
@@ -3002,7 +3031,7 @@ fn test_claim_reduces_project_balance() {
     client.claim(&project_id, &alice);
 
     // Remaining balance should be 4_000_000 (bob's half)
-    let remaining = client.get_balance(&project_id).unwrap();
+    let remaining = client.get_balance(&project_id);
     assert_eq!(remaining, 4_000_000, "project balance must be reduced by alice's claimed share");
 }
 
