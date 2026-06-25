@@ -1,4 +1,4 @@
-#![no_std]
+﻿#![no_std]
 
 use soroban_sdk::{
     contract, contractimpl, contracttype, token, Address, Env, Map, String, Symbol, Vec,
@@ -6,6 +6,8 @@ use soroban_sdk::{
 
 /// Number of project IDs stored per bucket to avoid loading the entire index
 /// into memory during paginated reads.
+const MAX_TITLE_LEN: u32 = 200;
+const MAX_ALIAS_LEN: u32 = 100;
 const PROJECT_ID_BUCKET_SIZE: u32 = 100;
 
 mod errors;

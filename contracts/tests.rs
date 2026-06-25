@@ -1,8 +1,8 @@
-#![cfg(test)]
+﻿#![cfg(test)]
 
 use super::*;
 use soroban_sdk::{
-    testutils::{Address as _, Events as _},
+    testutils::{Address as _, Events as _, Ledger},
     token, vec, Address, Env, IntoVal, String, Symbol, Vec,
 };
 
@@ -2623,4 +2623,202 @@ fn test_transfer_ownership_emits_event() {
     let before_count = env.events().all().len();
     client.transfer_project_ownership(&project_id, &owner, &new_owner);
     assert!(env.events().all().len() > before_count);
+}
+
+// ==========================================================
+// CONCURRENCY SAFETY TESTS  (issue #676)
+// ==========================================================
+
+#[test]
+fn test_sequential_distribute_accumulates_total_distributed() {
+    // Soroban serialises every transaction atomically - this test proves
+    // that two sequential distribute() calls never lose a write to
+    // total_distributed. A lost-write bug would produce 500 not 1500.
+    let (env, token_admin, token) = create_test_env();
+    let contract_id = env.register_contract(None, SplitNairaContract);
+    let client = SplitNairaContractClient::new(&env, &contract_id);
+
+    let alice = Address::generate(&env);
+    let bob   = Address::generate(&env);
+    let collaborators = make_collaborators(
+        &env,
+        vec![&env, alice.clone(), bob.clone()],
+        vec![&env, 5_000u32, 5_000u32],
+    );
+    let project_id = Symbol::new(&env, "proj676");
+    client.create_project(
+        &token_admin,
+        &project_id,
+        &String::from_str(&env, "Issue 676 Test"),
+        &String::from_str(&env, "test"),
+        &token,
+        &collaborators,
+    );
+
+    // Ledger 1: deposit 1000 and distribute
+    env.ledger().with_mut(|info| info.sequence_number = 100);
+    deposit_to_project(&env, &client, &token, &project_id, &token_admin, 1_000);
+    client.distribute(&project_id);
+    let s1 = client.get_project(&project_id).unwrap();
+    assert_eq!(s1.distribution_round, 1, "round should be 1");
+    assert_eq!(s1.total_distributed, 1_000, "distributed should be 1000");
+
+    // Ledger 2: deposit 500 and distribute
+    env.ledger().with_mut(|info| info.sequence_number = 101);
+    deposit_to_project(&env, &client, &token, &project_id, &token_admin, 500);
+    client.distribute(&project_id);
+    let s2 = client.get_project(&project_id).unwrap();
+    assert_eq!(s2.distribution_round, 2, "round should be 2");
+    assert_eq!(s2.total_distributed, 1_500,
+        "lost-write would give 500 not 1500 - proves no concurrent overwrite");
+
+    let alice_claimed = client.get_claimed(&project_id, &alice);
+    let bob_claimed   = client.get_claimed(&project_id, &bob);
+    assert_eq!(alice_claimed + bob_claimed, 1_500,
+        "per-collaborator claimed must equal total_distributed");
+}
+
+// ==========================================================
+// STRING LENGTH VALIDATION TESTS  (issue: validate_collaborators)
+// ==========================================================
+
+#[test]
+fn test_create_project_rejects_title_too_long() {
+    let (env, token_admin, token) = create_test_env();
+    let contract_id = env.register_contract(None, SplitNairaContract);
+    let client = SplitNairaContractClient::new(&env, &contract_id);
+    let alice = Address::generate(&env);
+    let bob   = Address::generate(&env);
+    let collaborators = make_collaborators(
+        &env,
+        vec![&env, alice.clone(), bob.clone()],
+        vec![&env, 5_000u32, 5_000u32],
+    );
+    // 201 characters — one over the limit
+    let long_title = String::from_str(&env, &"a".repeat(201));
+    let result = client.try_create_project(
+        &token_admin,
+        &Symbol::new(&env, "proj_tl"),
+        &long_title,
+        &String::from_str(&env, "test"),
+        &token,
+        &collaborators,
+    );
+    assert_eq!(result, Err(Ok(SplitError::InvalidTitle)));
+}
+
+#[test]
+fn test_create_project_accepts_title_at_limit() {
+    let (env, token_admin, token) = create_test_env();
+    let contract_id = env.register_contract(None, SplitNairaContract);
+    let client = SplitNairaContractClient::new(&env, &contract_id);
+    let alice = Address::generate(&env);
+    let bob   = Address::generate(&env);
+    let collaborators = make_collaborators(
+        &env,
+        vec![&env, alice.clone(), bob.clone()],
+        vec![&env, 5_000u32, 5_000u32],
+    );
+    // Exactly 200 characters — must succeed
+    let ok_title = String::from_str(&env, &"a".repeat(200));
+    client.create_project(
+        &token_admin,
+        &Symbol::new(&env, "proj_tok"),
+        &ok_title,
+        &String::from_str(&env, "test"),
+        &token,
+        &collaborators,
+    );
+}
+
+#[test]
+fn test_update_metadata_rejects_title_too_long() {
+    let (env, token_admin, token) = create_test_env();
+    let contract_id = env.register_contract(None, SplitNairaContract);
+    let client = SplitNairaContractClient::new(&env, &contract_id);
+    let alice = Address::generate(&env);
+    let bob   = Address::generate(&env);
+    let collaborators = make_collaborators(
+        &env,
+        vec![&env, alice.clone(), bob.clone()],
+        vec![&env, 5_000u32, 5_000u32],
+    );
+    let project_id = Symbol::new(&env, "proj_um");
+    client.create_project(
+        &token_admin,
+        &project_id,
+        &String::from_str(&env, "Valid Title"),
+        &String::from_str(&env, "test"),
+        &token,
+        &collaborators,
+    );
+    let long_title = String::from_str(&env, &"b".repeat(201));
+    let result = client.try_update_project_metadata(
+        &project_id,
+        &token_admin,
+        &long_title,
+        &String::from_str(&env, "test"),
+    );
+    assert_eq!(result, Err(Ok(SplitError::InvalidTitle)));
+}
+
+#[test]
+fn test_collaborator_rejects_alias_too_long() {
+    let (env, token_admin, token) = create_test_env();
+    let contract_id = env.register_contract(None, SplitNairaContract);
+    let client = SplitNairaContractClient::new(&env, &contract_id);
+    let alice = Address::generate(&env);
+    let bob   = Address::generate(&env);
+    // 101 character alias — one over the limit
+    let long_alias = String::from_str(&env, &"c".repeat(101));
+    let mut collabs = Vec::new(&env);
+    collabs.push_back(Collaborator {
+        address:      alice.clone(),
+        basis_points: 5_000,
+        alias:        long_alias,
+    });
+    collabs.push_back(Collaborator {
+        address:      bob.clone(),
+        basis_points: 5_000,
+        alias:        String::from_str(&env, "Bob"),
+    });
+    let result = client.try_create_project(
+        &token_admin,
+        &Symbol::new(&env, "proj_al"),
+        &String::from_str(&env, "Valid Title"),
+        &String::from_str(&env, "test"),
+        &token,
+        &collabs,
+    );
+    assert_eq!(result, Err(Ok(SplitError::InvalidAlias)));
+}
+
+#[test]
+fn test_collaborator_accepts_alias_at_limit() {
+    let (env, token_admin, token) = create_test_env();
+    let contract_id = env.register_contract(None, SplitNairaContract);
+    let client = SplitNairaContractClient::new(&env, &contract_id);
+    let alice = Address::generate(&env);
+    let bob   = Address::generate(&env);
+    // Exactly 100 characters — must succeed
+    let ok_alias = String::from_str(&env, &"c".repeat(100));
+    let mut collabs = Vec::new(&env);
+    collabs.push_back(Collaborator {
+        address:      alice.clone(),
+        basis_points: 5_000,
+        alias:        ok_alias,
+    });
+    collabs.push_back(Collaborator {
+        address:      bob.clone(),
+        basis_points: 5_000,
+        alias:        String::from_str(&env, "Bob"),
+    });
+    client.create_project(
+        &token_admin,
+        &Symbol::new(&env, "proj_aok"),
+        &String::from_str(&env, "Valid Title"),
+        &String::from_str(&env, "test"),
+        &token,
+        &collabs,
+    );
 }
