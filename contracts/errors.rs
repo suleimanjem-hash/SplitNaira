@@ -61,4 +61,7 @@ pub enum SplitError {
 
     /// Project has exceeded the maximum allowed number of collaborators
     TooManyCollaborators = 19,
+
+    /// Cached accounted balance exceeds the contract's actual token balance
+    AccountingDiscrepancy = 20,
 }

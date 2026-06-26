@@ -28,6 +28,7 @@ use events::{
     TokenDisallowed,
     UnallocatedWithdrawn,
     SplitsUpdatedWithPendingBalance,
+    AccountingDiscrepancy,
 };
 #[cfg(test)]
 mod tests;
@@ -110,9 +111,11 @@ pub enum DataKey {
     ProjectBalance(Symbol),
     /// Tracks how much each address has claimed per project
     Claimed(Symbol, Address),
+    /// Amount from the most recent claim for a collaborator on a project
+    LastClaimAmount(Symbol, Address),
     /// Total project count (for enumeration)
     ProjectCount,
-    /// Stores all project IDs in order for enumeration
+    /// Deprecated flat project ID index. Use `ProjectIdsBucket` instead.
     ProjectIds,
     /// Bucketed project ID index for memory-efficient pagination.
     /// Each bucket holds up to PROJECT_ID_BUCKET_SIZE IDs.
@@ -134,14 +137,16 @@ pub enum DataKey {
 }
 
 /// Returned by `get_claimable`: how much a collaborator has received and the
-/// last distribution round the project has completed.
+/// project's push-distribution round counter.
 #[contracttype]
 #[derive(Clone, Debug, PartialEq)]
 pub struct ClaimableInfo {
     /// Total amount claimed (paid out) to this collaborator across all rounds
     pub claimed: i128,
-    /// Number of distribution rounds completed for this project
+    /// Push-based `distribute` rounds only (not `claim`).
     pub distribution_round: u32,
+    /// Most recent `claim` payout amount for this collaborator.
+    pub last_claim_amount: i128,
 }
 
 // ============================================================
@@ -352,20 +357,10 @@ impl SplitNairaContract {
             .persistent()
             .get::<DataKey, u32>(&DataKey::ProjectCount)
             .unwrap_or(0);
+        let new_count = count + 1;
         env.storage()
             .persistent()
-            .set(&DataKey::ProjectCount, &(count + 1));
-
-        // Add project_id to the index for enumeration
-        let mut project_ids: Vec<Symbol> = env
-            .storage()
-            .persistent()
-            .get::<DataKey, Vec<Symbol>>(&DataKey::ProjectIds)
-            .unwrap_or(Vec::new(&env));
-        project_ids.push_back(project_id.clone());
-        env.storage()
-            .persistent()
-            .set(&DataKey::ProjectIds, &project_ids);
+            .set(&DataKey::ProjectCount, &new_count);
 
         // Append to bucketed index for memory-efficient pagination
         let bucket_count: u32 = env
@@ -373,8 +368,7 @@ impl SplitNairaContract {
             .persistent()
             .get::<DataKey, u32>(&DataKey::ProjectIdsBucketCount)
             .unwrap_or(0);
-        let total_ids = project_ids.len();
-        let target_bucket = (total_ids - 1) / PROJECT_ID_BUCKET_SIZE;
+        let target_bucket = (new_count - 1) / PROJECT_ID_BUCKET_SIZE;
         if target_bucket >= bucket_count {
             let mut new_bucket = Vec::new(&env);
             new_bucket.push_back(project_id.clone());
@@ -709,25 +703,8 @@ impl SplitNairaContract {
     // SELF-SERVICE CLAIM (User Onboarding â€” Wave 5)
     // ----------------------------------------------------------
 
-    /// Allows an individual collaborator to pull their proportional share of
-    /// the current project balance without requiring a full `distribute` call.
-    ///
-    /// This is the pull-based counterpart to the push-based `distribute`.
-    /// It is the primary onboarding path for new collaborators who want to
-    /// claim earnings at their own cadence.
-    ///
-    /// # Behaviour
-    /// - If `claimer` is not a collaborator on the project, returns `NotACollaborator`.
-    /// - If the project balance is zero, returns `Ok(0)` (no error, nothing transferred).
-    /// - Otherwise transfers `floor(balance Ã— basis_points / 10_000)` tokens to
-    ///   `claimer`, reduces `ProjectBalance` by that amount, and updates the
-    ///   per-address `Claimed` ledger entry.
-    /// - Emits a `CollaboratorClaimed` event on every non-zero transfer.
-    ///
-    /// # Errors
-    /// * `SplitError::NotFound`          â€” project does not exist
-    /// * `SplitError::NotACollaborator`  â€” claimer is not a collaborator
-    /// * `SplitError::DistributionsPaused` â€” global pause is active
+    /// Self-service pull payout for one collaborator. Does not increment
+    /// `distribution_round` (push-only counter).
     pub fn claim(
         env: Env,
         project_id: Symbol,
@@ -796,6 +773,10 @@ impl SplitNairaContract {
             &DataKey::Claimed(project_id.clone(), claimer.clone()),
             &(prev_claimed + amount),
         );
+        env.storage().persistent().set(
+            &DataKey::LastClaimAmount(project_id.clone(), claimer.clone()),
+            &amount,
+        );
         Self::bump_claimed_ttl(&env, &project_id, &claimer);
 
         // Transfer tokens to claimer
@@ -806,7 +787,7 @@ impl SplitNairaContract {
             project_id: project_id.clone(),
             claimer: claimer.clone(),
             amount,
-            distribution_round: project.distribution_round, // Add this line
+            distribution_round: project.distribution_round,
         }
         .publish(&env);
 
@@ -901,16 +882,23 @@ impl SplitNairaContract {
             .unwrap_or(0))
     }
 
-    /// Returns contract token balance not accounted for in any project balance.
-    ///
-    /// `unallocated = token_balance(contract) - sum(project_balances_for_token)`
+    /// Unallocated token balance (clamped to zero on accounting mismatch).
     pub fn get_unallocated_balance(env: Env, token: Address) -> Result<i128, SplitError> {
         let contract_address = env.current_contract_address();
         let token_client = token::Client::new(&env, &token);
         let contract_token_balance = token_client.balance(&contract_address);
 
         let accounted = Self::get_accounted_balance(&env, &token)?;
-        Ok(contract_token_balance - accounted)
+        if contract_token_balance < accounted {
+            AccountingDiscrepancy {
+                token: token.clone(),
+                contract_balance: contract_token_balance,
+                accounted_balance: accounted,
+            }
+            .publish(&env);
+            return Ok(0);
+        }
+        Ok(contract_token_balance.saturating_sub(accounted))
     }
 
     /// Admin-only recovery for direct token transfers into the contract address.
@@ -1046,11 +1034,61 @@ impl SplitNairaContract {
         Self::get_project_ids_from_buckets(&env, start, limit)
     }
 
-    /// Returns how much a collaborator has been paid across all distribution
-    /// rounds for a given project, plus the number of completed rounds.
-    ///
-    /// # Errors
-    /// * `SplitError::NotFound` - if the project does not exist
+    /// Migrates deprecated flat `ProjectIds` into bucketed index.
+    pub fn migrate_flat_to_buckets(env: Env, admin: Address) -> Result<(), SplitError> {
+        Self::require_contract_admin(&env, &admin)?;
+
+        let flat_ids: Vec<Symbol> = env
+            .storage()
+            .persistent()
+            .get::<DataKey, Vec<Symbol>>(&DataKey::ProjectIds)
+            .unwrap_or(Vec::new(&env));
+
+        let bucket_count: u32 = env
+            .storage()
+            .persistent()
+            .get::<DataKey, u32>(&DataKey::ProjectIdsBucketCount)
+            .unwrap_or(0);
+
+        if bucket_count == 0 && flat_ids.len() > 0 {
+            for i in 0..flat_ids.len() {
+                let id = flat_ids.get(i as u32).unwrap();
+                let idx = i as u32;
+                let target_bucket = idx / PROJECT_ID_BUCKET_SIZE;
+                let offset = idx % PROJECT_ID_BUCKET_SIZE;
+                if offset == 0 {
+                    let mut bucket = Vec::new(&env);
+                    bucket.push_back(id);
+                    env.storage()
+                        .persistent()
+                        .set(&DataKey::ProjectIdsBucket(target_bucket), &bucket);
+                } else {
+                    let mut bucket: Vec<Symbol> = env
+                        .storage()
+                        .persistent()
+                        .get::<DataKey, Vec<Symbol>>(&DataKey::ProjectIdsBucket(target_bucket))
+                        .unwrap_or(Vec::new(&env));
+                    bucket.push_back(id);
+                    env.storage()
+                        .persistent()
+                        .set(&DataKey::ProjectIdsBucket(target_bucket), &bucket);
+                }
+            }
+            let new_bucket_count =
+                (flat_ids.len() as u32 - 1) / PROJECT_ID_BUCKET_SIZE + 1;
+            env.storage()
+                .persistent()
+                .set(&DataKey::ProjectIdsBucketCount, &new_bucket_count);
+        }
+
+        if env.storage().persistent().has(&DataKey::ProjectIds) {
+            env.storage().persistent().remove(&DataKey::ProjectIds);
+        }
+
+        Ok(())
+    }
+
+    /// Claimed amount, push `distribution_round`, and last `claim` amount.
     pub fn get_claimable(
         env: Env,
         project_id: Symbol,
@@ -1061,11 +1099,20 @@ impl SplitNairaContract {
         let claimed = env
             .storage()
             .persistent()
-            .get::<DataKey, i128>(&DataKey::Claimed(project_id, collaborator))
+            .get::<DataKey, i128>(&DataKey::Claimed(project_id.clone(), collaborator.clone()))
+            .unwrap_or(0);
+        let last_claim_amount = env
+            .storage()
+            .persistent()
+            .get::<DataKey, i128>(&DataKey::LastClaimAmount(
+                project_id,
+                collaborator,
+            ))
             .unwrap_or(0);
         Ok(ClaimableInfo {
             claimed,
             distribution_round: project.distribution_round,
+            last_claim_amount,
         })
     }
 
@@ -1201,6 +1248,15 @@ impl SplitNairaContract {
         if env.storage().persistent().has(&claimed_key) {
             env.storage().persistent().extend_ttl(
                 &claimed_key,
+                PROJECT_TTL_THRESHOLD_LEDGERS,
+                PROJECT_TTL_BUMP_LEDGERS,
+            );
+        }
+        let last_claim_key =
+            DataKey::LastClaimAmount(project_id.clone(), collaborator.clone());
+        if env.storage().persistent().has(&last_claim_key) {
+            env.storage().persistent().extend_ttl(
+                &last_claim_key,
                 PROJECT_TTL_THRESHOLD_LEDGERS,
                 PROJECT_TTL_BUMP_LEDGERS,
             );

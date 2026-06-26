@@ -310,3 +310,20 @@ impl TokenDisallowed {
         );
     }
 }
+
+/// Emitted when cached accounted balance exceeds the contract token balance.
+#[derive(Clone, Debug)]
+pub struct AccountingDiscrepancy {
+    pub token: Address,
+    pub contract_balance: i128,
+    pub accounted_balance: i128,
+}
+
+impl AccountingDiscrepancy {
+    pub fn publish(&self, env: &Env) {
+        env.events().publish(
+            (Symbol::new(env, "accounting_discrepancy"), self.token.clone()),
+            (self.contract_balance, self.accounted_balance),
+        );
+    }
+}
