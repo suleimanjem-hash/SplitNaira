@@ -2,7 +2,11 @@ import { Router, Request, Response, NextFunction } from "express";
 import { z } from "zod";
 import { getDataSource, withTransaction } from "../services/database.js";
 import { User } from "../entities/User.js";
-import { userRegistrationSchema, stellarAddressSchema } from "../schemas/user.schemas.js";
+import {
+  userRegistrationSchema,
+  stellarAddressSchema,
+  userUpdateSchema,
+} from "../schemas/user.schemas.js";
 import { AppError, ErrorCode, ErrorType } from "../lib/errors.js";
 import { logger } from "../services/logger.js";
 import { signToken } from "../services/jwt.js";

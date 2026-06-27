@@ -75,12 +75,21 @@ app.use("/docs", (_req, res, next) => {
   next();
 });
 
+const WALLET_ADDRESS_REGEX = /\b[GC][A-Z2-7]{55}\b/g;
+
+export function scrubWalletAddresses(value: string): string {
+  return value.replace(
+    WALLET_ADDRESS_REGEX,
+    "[WALLET_REDACTED]"
+  );
+}
+
 app.use(
   morgan((tokens, req, res) => {
     const requestId = res.locals.requestId ?? req.header("x-request-id") ?? "-";
     return [
       tokens.method(req, res),
-      tokens.url(req, res),
+      scrubWalletAddresses(tokens.url(req, res) ?? ""),
       tokens.status(req, res),
       "-",
       tokens["response-time"](req, res),
