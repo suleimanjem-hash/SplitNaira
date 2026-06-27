@@ -15,11 +15,12 @@ import { transactionsRouter } from "./routes/transactions.js";
 import { errorHandler, notFoundHandler } from "./middleware/error.js";
 import { requestIdMiddleware } from "./middleware/request-id.js";
 import { metricsMiddleware } from "./middleware/metrics.js";
-import { globalLimiter, readLimiter, writeLimiter, adminLimiter, authLimiter } from "./middleware/rate-limit.js";
+import { globalLimiter, readLimiter, writeLimiter, adminLimiter, authLimiter, sseConnectionLimiter } from "./middleware/rate-limit.js";
 import {
   enforcePaymentsAdminWriteEnabled,
   requirePaymentsAdminAccess
 } from "./middleware/payments-admin.js";
+import { eventsRouter } from "./routes/events.js";
 import { validateEnv, printEnvDiagnostics } from "./config/env.js";
 import { initDatabase, closeDatabase } from "./services/database.js";
 import { logger } from "./services/logger.js";
@@ -108,6 +109,8 @@ app.use("/users", (req, res, next) => {
   return writeLimiter(req, res, next);
 });
 app.use("/transactions", readLimiter);
+app.use("/events", sseConnectionLimiter);
+app.use("/events", eventsRouter);
 
 app.get("/", (_req, res) => {
   res.json({

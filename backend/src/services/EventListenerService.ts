@@ -4,6 +4,7 @@ import { TransactionRecord } from "../entities/Transaction.js";
 import { logger } from "./logger.js";
 import { scValToNative } from "@stellar/stellar-sdk";
 import { fetchProjectById } from "./splits.service.js";
+import { publishSseEvent } from "./SseEventBus.js";
 
 let pollInterval: NodeJS.Timeout | null = null;
 let isPolling = false;
@@ -99,35 +100,50 @@ export async function pollEvents() {
             }
           });
 
-          if (topics[0] !== "payment_sent") {
-            continue;
-          }
+          // Check for `payment_sent` events
+          if (topics[0] === "payment_sent") {
+            const projectId = topics[1] || "";
+            const valueData = scValToNative(event.value) as [string, string | number | bigint];
+            const recipient = valueData[0];
+            const amount = String(valueData[1]);
+            const txHash = event.txHash;
+            const timestamp = Math.floor(new Date(event.ledgerClosedAt).getTime() / 1000);
 
-          const projectId = topics[1] || "";
+            // Verify if transaction is already indexed
+            const existing = await repo.findOneBy({ txHash });
+            if (!existing) {
+              // Retrieve project to get its token address
+              let token = "Native";
+              try {
+                const project = await fetchProjectById(projectId);
+                if (project && typeof project === "object" && "token" in project) {
+                  token = String(project.token);
+                }
+              } catch (err) {
+                logger.warn(`Could not resolve token address for project ${projectId}. Using fallback.`, { err });
+              }
 
-          const valueData = scValToNative(event.value) as [
-            string,
-            string | number | bigint
-          ];
+              const record = repo.create({
+                roundId: projectId,
+                recipient,
+                amount,
+                token,
+                timestamp,
+                txHash,
+                status: "completed"
+              });
 
-          const recipient = valueData[0];
-          const amount = String(valueData[1]);
-          const txHash = event.txHash;
-          const timestamp = Math.floor(
-            new Date(event.ledgerClosedAt).getTime() / 1000
-          );
-
-          let token = "Native";
-
-          try {
-            const project = await fetchProjectById(projectId);
-
-            if (
-              project &&
-              typeof project === "object" &&
-              "token" in project
-            ) {
-              token = String(project.token);
+              await repo.save(record);
+              logger.info(`Synced payout event to database: project=${projectId}, recipient=${recipient}, amount=${amount}, tx=${txHash}`);
+              publishSseEvent(txHash, {
+                txHash,
+                roundId: projectId,
+                recipient,
+                amount,
+                token,
+                timestamp,
+                status: "completed"
+              });
             }
           } catch (err) {
             logger.warn(
