@@ -13,6 +13,8 @@ const PROJECT_ID_BUCKET_SIZE: u32 = 100;
 mod errors;
 mod events;
 use events::{
+    Publishable,
+    MaxCollaboratorsUpdated,
     CollaboratorsUpdated,
     DepositReceived,
     DistributionComplete,
@@ -55,8 +57,26 @@ const PROJECT_TTL_THRESHOLD_LEDGERS: u32 = 50_000;
 /// these hard-coded constants should be considered for migration into configurable instance-storage values.
 const PROJECT_TTL_BUMP_LEDGERS: u32 = 100_000;
 
-/// Maximum number of collaborators allowed in a single project
-const MAX_COLLABORATORS: u32 = 50;
+/// Default maximum number of collaborators allowed in a single project.
+///
+/// This is the value used when no admin override has been configured via
+/// [`SplitNairaContract::set_max_collaborators`]. Keeping it as the default
+/// preserves the historical contract behaviour for existing deployments.
+const DEFAULT_MAX_COLLABORATORS: u32 = 50;
+
+/// Minimum value an admin may configure for the collaborator cap.
+///
+/// A project always requires at least two collaborators (see
+/// [`SplitError::TooFewCollaborators`]), so the cap can never be set below this.
+const MIN_MAX_COLLABORATORS: u32 = 2;
+
+/// Hard upper bound on the admin-configurable collaborator cap.
+///
+/// `distribute` iterates over every collaborator within a single transaction,
+/// so the cap is bounded to keep each distribution within Soroban's per-call
+/// resource limits. This ceiling protects the contract from being configured
+/// into a state where distributions can no longer fit in a ledger.
+const MAX_MAX_COLLABORATORS: u32 = 200;
 
 // ============================================================
 //  DATA TYPES
@@ -134,6 +154,9 @@ pub enum DataKey {
     AccountedTokenBalance(Address),
     /// Global flag to pause all distributions (emergency stop)
     DistributionsPaused,
+    /// Admin-configurable per-project collaborator cap.
+    /// When unset, the contract falls back to `DEFAULT_MAX_COLLABORATORS`.
+    MaxCollaborators,
 }
 
 /// Returned by `get_claimable`: how much a collaborator has received and the
@@ -228,6 +251,64 @@ impl SplitNairaContract {
         }
         .publish(&env);
         Ok(())
+    }
+
+    /// Returns the per-project collaborator cap currently in effect.
+    ///
+    /// This is the admin-configured value if one has been set via
+    /// [`Self::set_max_collaborators`], otherwise [`DEFAULT_MAX_COLLABORATORS`].
+    /// Existing deployments that never call the setter keep the default, so this
+    /// is fully backward compatible.
+    pub fn get_max_collaborators(env: Env) -> u32 {
+        Self::effective_max_collaborators(&env)
+    }
+
+    /// Configures the per-project collaborator cap (Scale & Capacity tuning).
+    ///
+    /// Only the contract admin may call this. The value is bounded to
+    /// `[MIN_MAX_COLLABORATORS, MAX_MAX_COLLABORATORS]` so distributions always
+    /// remain executable within Soroban's per-call resource limits.
+    ///
+    /// # Rollback
+    /// To revert to the original behaviour, set the value back to
+    /// `DEFAULT_MAX_COLLABORATORS` (50). The override only affects validation of
+    /// *new* `create_project` / `update_collaborators` calls; projects created
+    /// while a higher cap was active are unaffected by a later reduction.
+    ///
+    /// # Errors
+    /// * `SplitError::Unauthorized`           - caller is not the admin
+    /// * `SplitError::AdminNotSet`            - admin has not been configured
+    /// * `SplitError::InvalidMaxCollaborators`- value outside the allowed range
+    pub fn set_max_collaborators(
+        env: Env,
+        admin: Address,
+        value: u32,
+    ) -> Result<(), SplitError> {
+        Self::require_contract_admin(&env, &admin)?;
+
+        if value < MIN_MAX_COLLABORATORS || value > MAX_MAX_COLLABORATORS {
+            return Err(SplitError::InvalidMaxCollaborators);
+        }
+
+        env.storage()
+            .instance()
+            .set(&DataKey::MaxCollaborators, &value);
+
+        MaxCollaboratorsUpdated {
+            admin: admin.clone(),
+            value,
+        }
+        .publish(&env);
+        Ok(())
+    }
+
+    /// Resolves the effective collaborator cap: the admin override if present,
+    /// otherwise the compiled-in default.
+    fn effective_max_collaborators(env: &Env) -> u32 {
+        env.storage()
+            .instance()
+            .get::<DataKey, u32>(&DataKey::MaxCollaborators)
+            .unwrap_or(DEFAULT_MAX_COLLABORATORS)
     }
 
     /// Adds a token contract address to the allowlist.
@@ -1366,7 +1447,7 @@ if balance < project.collaborators.len() as i128 {
             return Err(SplitError::TooFewCollaborators);
         }
 
-        if collaborators.len() > MAX_COLLABORATORS {
+        if collaborators.len() > Self::effective_max_collaborators(env) {
             return Err(SplitError::TooManyCollaborators);
         }
 
