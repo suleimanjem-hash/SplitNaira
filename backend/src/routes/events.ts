@@ -1,7 +1,12 @@
 import { Router, Request, Response } from "express";
 import { getSseEventBus, getSseEventName } from "../services/SseEventBus.js";
+import { getEventBus, TRANSACTION_CONFIRMED } from "../services/EventBus.js";
 import { logger } from "../services/logger.js";
 import { AppError, ErrorCode, ErrorType } from "../lib/errors.js";
+
+// Heartbeat cadence for the path-based transaction stream. A comment line every
+// 15s keeps intermediary proxies from closing an otherwise-idle connection.
+const HEARTBEAT_INTERVAL_MS = 15_000;
 
 export const eventsRouter = Router();
 
@@ -111,4 +116,61 @@ async function handleEventStream(req: Request, res: Response) {
   logger.info("SSE subscription opened", { txHash, requestId, currentCount: currentCount + 1 });
 }
 
+/**
+ * SSE endpoint (Issue #618): GET /events/transactions/:txHash
+ *
+ * Holds the response open and streams the matching `transaction:confirmed`
+ * event (emitted by EventListenerService once the record is saved) as a JSON
+ * SSE message. The bus listener is removed and the heartbeat cleared when the
+ * client disconnects.
+ */
+function handleTransactionStream(req: Request, res: Response) {
+  const txHash = String(req.params.txHash ?? "").trim();
+  const requestId = res.locals.requestId as string | undefined;
+
+  if (!txHash) {
+    throw new AppError(
+      ErrorType.VALIDATION,
+      ErrorCode.VALIDATION_ERROR,
+      "Path parameter txHash is required for /events/transactions subscriptions."
+    );
+  }
+
+  createSseHeaders(res);
+
+  const bus = getEventBus();
+  const listener = (record: unknown) => {
+    if (
+      record &&
+      typeof record === "object" &&
+      (record as { txHash?: unknown }).txHash === txHash
+    ) {
+      try {
+        sendSseEvent(res, "transaction:confirmed", record);
+      } catch (writeError) {
+        logger.warn("Failed to send transaction SSE payload", {
+          txHash,
+          requestId,
+          error: writeError,
+        });
+      }
+    }
+  };
+
+  bus.on(TRANSACTION_CONFIRMED, listener);
+
+  const heartbeat = setInterval(() => {
+    res.write(": heartbeat\n\n");
+  }, HEARTBEAT_INTERVAL_MS);
+
+  req.on("close", () => {
+    bus.removeListener(TRANSACTION_CONFIRMED, listener);
+    clearInterval(heartbeat);
+    logger.info("Transaction SSE client disconnected", { txHash, requestId });
+  });
+
+  logger.info("Transaction SSE subscription opened", { txHash, requestId });
+}
+
 eventsRouter.get("/", handleEventStream);
+eventsRouter.get("/transactions/:txHash", handleTransactionStream);

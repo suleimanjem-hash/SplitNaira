@@ -6,6 +6,7 @@ import { logger } from "./logger.js";
 import { scValToNative } from "@stellar/stellar-sdk";
 import { fetchProjectById } from "./splits.service.js";
 import { publishSseEvent } from "./SseEventBus.js";
+import { getEventBus, TRANSACTION_CONFIRMED } from "./EventBus.js";
 
 // Polling cadence. Under normal operation we poll every 5s. After a streak of
 // consecutive RPC failures we back off to 30s to avoid hammering an RPC that is
@@ -243,6 +244,23 @@ export async function pollEvents() {
             new Date(event.ledgerClosedAt).getTime() / 1000
           );
 
+          // Only `payment_sent` events are indexed as transaction records.
+          if (topics[0] !== "payment_sent") {
+            continue;
+          }
+
+          const projectId = topics[1] || "";
+          const valueData = scValToNative(event.value) as [
+            string,
+            string | number | bigint
+          ];
+          const recipient = valueData[0];
+          const amount = String(valueData[1]);
+          const txHash = event.txHash;
+          const timestamp = Math.floor(
+            new Date(event.ledgerClosedAt).getTime() / 1000
+          );
+
           // Skip already-indexed transactions. The DB also enforces uniqueness
           // on txHash, but this avoids redundant work during polling.
           const existing = await repo.findOneBy({ txHash });
@@ -347,6 +365,21 @@ export async function pollEvents() {
         logger.info(
           `Upserted ${newRecords.length} transaction record(s) from current event batch.`
         );
+
+        // Real-time push: notify the generic event bus (Issue #618) and the
+        // txHash-keyed SSE bus so connected clients are updated immediately.
+        for (const record of records) {
+          getEventBus().emit(TRANSACTION_CONFIRMED, record);
+          publishSseEvent(record.txHash, {
+            txHash: record.txHash,
+            roundId: record.roundId,
+            recipient: record.recipient,
+            amount: record.amount,
+            token: record.token,
+            timestamp: record.timestamp,
+            status: record.status,
+          });
+        }
       }
     }
 
