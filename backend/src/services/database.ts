@@ -107,6 +107,20 @@ export function getDataSource(): DataSource {
  * @param callback - Async function to execute within transaction
  * @returns Promise with the callback result
  */
+
+function isRetryableTransactionError(error: unknown): boolean {
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    "code" in error &&
+    (error.code === "40001" || error.code === "40P01")
+  );
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 export async function withTransaction<T>(
   callback: (queryRunner: QueryRunner) => Promise<T>
 ): Promise<T> {
