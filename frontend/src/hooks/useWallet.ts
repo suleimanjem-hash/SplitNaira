@@ -62,8 +62,6 @@ function reducer(state: State, action: Action): State {
 
 // ─── Context ──────────────────────────────────────────────────────────────────
 
-import { createContext as _createContext } from "react";
-
 export const WalletContext = createContext<WalletContextValue | null>(null);
 
 // ─── Hook ─────────────────────────────────────────────────────────────────────

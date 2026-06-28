@@ -1,6 +1,35 @@
 {
   "Error": {
     "title": "Erreur inattendue de l'application",
-    "retry": "Reessayer"
+    "retry": "Réessayer"
+  },
+  "SplitApp": {
+    "header": {
+      "subtitle": "Gestion premium des royalties sur Stellar."
+    },
+    "tabs": {
+      "dashboard": "Tableau de bord",
+      "create": "Créer",
+      "manage": "Gérer et distribuer",
+      "projects": "Projets"
+    },
+    "actions": {
+      "connectWallet": "Connecter le wallet",
+      "switchWallet": "Changer de wallet",
+      "sync": "Synchroniser",
+      "disconnect": "Déconnecter",
+      "executePayout": "Exécuter le paiement",
+      "cancel": "Annuler",
+      "saveChanges": "Enregistrer",
+      "lockProject": "Verrouiller le projet",
+      "confirmDeposit": "Confirmer le dépôt",
+      "confirmPause": "Confirmer la pause",
+      "confirmResume": "Confirmer la reprise"
+    },
+    "wallet": {
+      "statusConnected": "Statut : connecté",
+      "wallet": "Wallet",
+      "network": "Réseau"
+    }
   }
 }

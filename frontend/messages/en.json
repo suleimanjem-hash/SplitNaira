@@ -2,5 +2,34 @@
   "Error": {
     "title": "Unexpected application error",
     "retry": "Try again"
+  },
+  "SplitApp": {
+    "header": {
+      "subtitle": "Premium royalty management on Stellar."
+    },
+    "tabs": {
+      "dashboard": "Dashboard",
+      "create": "Create",
+      "manage": "Manage & Distribute",
+      "projects": "Projects"
+    },
+    "actions": {
+      "connectWallet": "Connect Wallet",
+      "switchWallet": "Switch Wallet",
+      "sync": "Sync",
+      "disconnect": "Disconnect",
+      "executePayout": "Execute Payout",
+      "cancel": "Cancel",
+      "saveChanges": "Save Changes",
+      "lockProject": "Lock Project",
+      "confirmDeposit": "Confirm Deposit",
+      "confirmPause": "Confirm Pause",
+      "confirmResume": "Confirm Resume"
+    },
+    "wallet": {
+      "statusConnected": "Status: Connected",
+      "wallet": "Wallet",
+      "network": "Network"
+    }
   }
 }
